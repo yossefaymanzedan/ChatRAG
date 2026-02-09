@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     embedding_model: str = Field(default="BAAI/bge-small-en-v1.5", alias="EMBEDDING_MODEL")
     embedding_cache_dir: str = Field(default=".rag/models", alias="EMBEDDING_CACHE_DIR")
-    embedding_offline: bool = Field(default=True, alias="EMBEDDING_OFFLINE")
+    embedding_offline: bool = Field(default=False, alias="EMBEDDING_OFFLINE")
     embedding_batch_size: int = Field(default=16, alias="EMBEDDING_BATCH_SIZE")
     chroma_dir: str = Field(default=".rag/chroma", alias="CHROMA_DIR")
     chroma_collection: str = Field(default="chatrag", alias="CHROMA_COLLECTION")
