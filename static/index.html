@@ -1,0 +1,3229 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>AI Chat Interface</title>
+    <!-- Tailwind CSS with plugins -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Tailwind Configuration -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        sidebar: '#f9f9f9',
+                        sidebarHover: '#ececec',
+                        actionBtn: '#f0f0f0',
+                        brandText: '#0d0d0d',
+                        placeholderText: '#8e8ea0',
+                        pillBg: '#e5e5e5'
+                    },
+                    fontFamily: {
+                        sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <script>
+        (function () {
+            try {
+                const saved = localStorage.getItem('offline_theme');
+                if (saved === 'dark') {
+                    document.documentElement.classList.add('theme-dark');
+                }
+            } catch (_e) {}
+        })();
+    </script>
+    <!-- FontAwesome for Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+    <!-- Custom Styles for Scrollbar and specific layout tweaks -->
+    <style data-purpose="custom-scrollbar">
+        /* Custom Scrollbar for Sidebar */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: rgba(0, 0, 0, 0.1);
+            border-radius: 20px;
+        }
+
+        .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+            background-color: rgba(0, 0, 0, 0.2);
+        }
+
+        /* Polished app scrollbars (chat + sources) */
+        #chat-main-column,
+        #chat-thread,
+        #sources-response-list,
+        #source-preview-body,
+        #processed-files-modal-list {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(148, 163, 184, 0.75) transparent;
+        }
+
+        #chat-main-column::-webkit-scrollbar,
+        #chat-thread::-webkit-scrollbar,
+        #sources-response-list::-webkit-scrollbar,
+        #source-preview-body::-webkit-scrollbar,
+        #processed-files-modal-list::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        #chat-main-column::-webkit-scrollbar-track,
+        #chat-thread::-webkit-scrollbar-track,
+        #sources-response-list::-webkit-scrollbar-track,
+        #source-preview-body::-webkit-scrollbar-track,
+        #processed-files-modal-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        #chat-main-column::-webkit-scrollbar-thumb,
+        #chat-thread::-webkit-scrollbar-thumb,
+        #sources-response-list::-webkit-scrollbar-thumb,
+        #source-preview-body::-webkit-scrollbar-thumb,
+        #processed-files-modal-list::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, rgba(203, 213, 225, 0.95), rgba(148, 163, 184, 0.95));
+            border-radius: 999px;
+            border: 2px solid transparent;
+            background-clip: content-box;
+        }
+
+        #chat-main-column:hover::-webkit-scrollbar-thumb,
+        #chat-thread:hover::-webkit-scrollbar-thumb,
+        #sources-response-list:hover::-webkit-scrollbar-thumb,
+        #source-preview-body:hover::-webkit-scrollbar-thumb,
+        #processed-files-modal-list:hover::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, rgba(148, 163, 184, 0.98), rgba(100, 116, 139, 0.98));
+            background-clip: content-box;
+        }
+
+        /* Smooth open/close for left sidebar and sources panel */
+        #saved-chats-sidebar,
+        #sources-panel {
+            overflow: hidden;
+            will-change: width, max-width, transform, opacity;
+            transition: width 260ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                        max-width 260ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                        transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1),
+                        opacity 200ms ease,
+                        border-color 180ms ease;
+        }
+
+        #saved-chats-sidebar.panel-collapsed {
+            width: 0 !important;
+            min-width: 0 !important;
+            max-width: 0 !important;
+            opacity: 0;
+            transform: translateX(-14px);
+            pointer-events: none;
+            border-right-color: transparent !important;
+        }
+
+        #sources-panel.panel-collapsed {
+            width: 0 !important;
+            min-width: 0 !important;
+            max-width: 0 !important;
+            opacity: 0;
+            transform: translateX(14px);
+            pointer-events: none;
+            border-left-color: transparent !important;
+        }
+
+        .mobile-drawer-backdrop {
+            position: fixed;
+            inset: 0;
+            z-index: 45;
+            background: rgba(15, 23, 42, 0.42);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 220ms ease;
+        }
+
+        .mobile-drawer-backdrop.backdrop-open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        @media (max-width: 900px) {
+            #saved-chats-sidebar,
+            #sources-panel {
+                position: fixed;
+                top: 0;
+                bottom: 0;
+                height: 100dvh !important;
+                z-index: 50;
+                overflow-y: auto;
+                box-shadow: 0 20px 45px rgba(2, 6, 23, 0.28);
+            }
+
+            #saved-chats-sidebar {
+                left: 0;
+                width: min(340px, 88vw) !important;
+                max-width: 88vw !important;
+            }
+
+            #sources-panel {
+                right: 0;
+                left: auto;
+                width: min(430px, 92vw) !important;
+                max-width: 92vw !important;
+            }
+
+            #saved-chats-sidebar.panel-collapsed {
+                width: min(340px, 88vw) !important;
+                max-width: 88vw !important;
+                transform: translateX(calc(-100% - 16px));
+                opacity: 0;
+                pointer-events: none;
+                border-right-color: transparent !important;
+            }
+
+            #sources-panel.panel-collapsed {
+                width: min(430px, 92vw) !important;
+                max-width: 92vw !important;
+                transform: translateX(calc(100% + 16px));
+                opacity: 0;
+                pointer-events: none;
+                border-left-color: transparent !important;
+            }
+        }
+
+        @media (min-width: 901px) {
+            .mobile-drawer-backdrop {
+                display: none !important;
+            }
+        }
+
+        /* Modal enter/exit animations */
+        .js-modal {
+            opacity: 0;
+            transition: opacity 220ms ease;
+        }
+
+        .js-modal.modal-open {
+            opacity: 1;
+        }
+
+        .js-modal-overlay {
+            opacity: 0;
+            transition: opacity 220ms ease;
+        }
+
+        .js-modal.modal-open .js-modal-overlay {
+            opacity: 1;
+        }
+
+        .js-modal-card {
+            opacity: 0;
+            transform: translateY(10px) scale(0.985);
+            transition: opacity 220ms ease, transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
+
+        .js-modal.modal-open .js-modal-card {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+
+        .markdown-body p {
+            margin: 0 0 0.75rem 0;
+        }
+
+        .markdown-body p:last-child {
+            margin-bottom: 0;
+        }
+
+        .markdown-body ul,
+        .markdown-body ol {
+            margin: 0.5rem 0 0.75rem 1.25rem;
+        }
+
+        .markdown-body li {
+            margin: 0.2rem 0;
+        }
+
+        .markdown-body code {
+            background: #f3f4f6;
+            border-radius: 6px;
+            padding: 0.08rem 0.35rem;
+            font-size: 0.9em;
+        }
+
+        .markdown-body pre {
+            background: #111827;
+            color: #f9fafb;
+            border-radius: 12px;
+            padding: 0.8rem;
+            overflow: auto;
+            margin: 0.6rem 0 0.9rem 0;
+        }
+
+        .markdown-body pre code {
+            background: transparent;
+            padding: 0;
+            color: inherit;
+        }
+
+        .theme-dark body {
+            background: #0b1220 !important;
+            color: #e5e7eb !important;
+        }
+
+        .theme-dark aside,
+        .theme-dark main,
+        .theme-dark #chat-main-column,
+        .theme-dark #sources-panel,
+        .theme-dark #processed-files-modal .bg-white,
+        .theme-dark #chat-thread .bg-white,
+        .theme-dark #main-content-stack .bg-white,
+        .theme-dark #composer-shell .bg-white,
+        .theme-dark #file-processing-card .bg-white {
+            background-color: #111827 !important;
+            color: #e5e7eb !important;
+            border-color: #1f2937 !important;
+        }
+
+        .theme-dark .bg-gray-50,
+        .theme-dark .bg-gray-100,
+        .theme-dark .bg-sidebar,
+        .theme-dark .from-slate-50,
+        .theme-dark .to-white {
+            background: #0f172a !important;
+        }
+
+        .theme-dark .text-gray-900,
+        .theme-dark .text-gray-800,
+        .theme-dark .text-slate-900,
+        .theme-dark .text-slate-800 {
+            color: #f3f4f6 !important;
+        }
+
+        .theme-dark .text-gray-700,
+        .theme-dark .text-gray-600,
+        .theme-dark .text-slate-700,
+        .theme-dark .text-slate-600,
+        .theme-dark .text-slate-500,
+        .theme-dark .text-gray-500 {
+            color: #cbd5e1 !important;
+        }
+
+        .theme-dark input,
+        .theme-dark textarea {
+            background: #111827 !important;
+            color: #e5e7eb !important;
+            border-color: #374151 !important;
+        }
+
+        .theme-dark .border-gray-100,
+        .theme-dark .border-gray-200,
+        .theme-dark .border-blue-100,
+        .theme-dark .divide-gray-100 > * {
+            border-color: #1f2937 !important;
+        }
+
+        .theme-dark #top-nav {
+            background: rgba(15, 23, 42, 0.92) !important;
+            border-bottom: 1px solid #1f2937;
+        }
+
+        .theme-dark #new-chat-btn {
+            background: linear-gradient(180deg, #1e293b, #0f172a) !important;
+            color: #e2e8f0 !important;
+            border: 1px solid #334155 !important;
+            box-shadow: 0 8px 22px rgba(2, 6, 23, 0.45) !important;
+        }
+
+        .theme-dark #new-chat-btn:hover {
+            background: linear-gradient(180deg, #273549, #162335) !important;
+        }
+
+        .theme-dark #search-chats-input {
+            background: #0f172a !important;
+            border: 1px solid #334155 !important;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02), 0 8px 20px rgba(2, 6, 23, 0.35) !important;
+            color: #dbeafe !important;
+        }
+
+        .theme-dark #search-chats-input::placeholder {
+            color: #93a4c0 !important;
+        }
+
+        #chat-mode-menu {
+            background: #ffffff;
+            border: 1px solid #dbe3f0;
+            box-shadow: 0 14px 30px rgba(15, 23, 42, 0.16);
+        }
+
+        #chat-mode-menu .mode-option {
+            background: #ffffff;
+            color: #0f172a;
+            transition: background-color 0.16s ease, color 0.16s ease;
+        }
+
+        #chat-mode-menu .mode-option:hover {
+            background: #f8fafc;
+        }
+
+        #chat-mode-menu .mode-option[data-active="true"] {
+            background: #eff6ff;
+        }
+
+        #chat-mode-menu .mode-option-title {
+            color: #0f172a;
+        }
+
+        #chat-mode-menu .mode-option-desc {
+            color: #64748b;
+        }
+
+        #chat-mode-menu .mode-option[data-active="true"] .mode-option-title {
+            color: #1d4ed8;
+        }
+
+        #chat-mode-menu .mode-option[data-active="true"] .mode-option-desc {
+            color: #3b82f6;
+        }
+
+        .theme-dark #chat-mode-menu {
+            background: #0f172a !important;
+            border-color: #334155 !important;
+            box-shadow: 0 20px 38px rgba(2, 6, 23, 0.58) !important;
+        }
+
+        .theme-dark #chat-mode-menu .mode-option {
+            background: #0f172a !important;
+            color: #dbeafe !important;
+        }
+
+        .theme-dark #chat-mode-menu .mode-option:hover {
+            background: #172033 !important;
+        }
+
+        .theme-dark #chat-mode-menu .mode-option[data-active="true"] {
+            background: #1e293b !important;
+        }
+
+        .theme-dark #chat-mode-menu .mode-option-title {
+            color: #dbeafe !important;
+        }
+
+        .theme-dark #chat-mode-menu .mode-option-desc {
+            color: #94a3b8 !important;
+        }
+
+        .theme-dark #chat-mode-menu .mode-option[data-active="true"] .mode-option-title {
+            color: #93c5fd !important;
+        }
+
+        .theme-dark #chat-mode-menu .mode-option[data-active="true"] .mode-option-desc {
+            color: #bfdbfe !important;
+        }
+
+        .saved-chat-row {
+            border: 1px solid transparent;
+        }
+
+        .saved-chat-row:hover {
+            background: #f1f5f9;
+        }
+
+        .saved-chat-row-active {
+            background: #eaf2ff;
+            border-color: #bfdbfe;
+            color: #1e3a8a !important;
+        }
+
+        .theme-dark .saved-chat-row {
+            color: #dbeafe !important;
+        }
+
+        .theme-dark .saved-chat-row:hover {
+            background: #172033 !important;
+            border-color: #334155 !important;
+        }
+
+        .theme-dark .saved-chat-row-active {
+            background: #1e293b !important;
+            border-color: #3b82f6 !important;
+            color: #bfdbfe !important;
+            box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25) inset;
+        }
+
+        .theme-dark .saved-chat-action {
+            color: #94a3b8 !important;
+        }
+
+        .theme-dark .saved-chat-action:hover {
+            background: #1e293b !important;
+            color: #dbeafe !important;
+        }
+
+        .theme-dark #chat-main-column,
+        .theme-dark #chat-thread,
+        .theme-dark #sources-response-list,
+        .theme-dark #source-preview-body,
+        .theme-dark #processed-files-modal-list {
+            scrollbar-color: rgba(71, 85, 105, 0.9) transparent;
+        }
+
+        .theme-dark #chat-main-column::-webkit-scrollbar-thumb,
+        .theme-dark #chat-thread::-webkit-scrollbar-thumb,
+        .theme-dark #sources-response-list::-webkit-scrollbar-thumb,
+        .theme-dark #source-preview-body::-webkit-scrollbar-thumb,
+        .theme-dark #processed-files-modal-list::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, rgba(71, 85, 105, 0.95), rgba(51, 65, 85, 0.95));
+            border: 2px solid transparent;
+            background-clip: content-box;
+        }
+
+        .theme-dark #chat-main-column:hover::-webkit-scrollbar-thumb,
+        .theme-dark #chat-thread:hover::-webkit-scrollbar-thumb,
+        .theme-dark #sources-response-list:hover::-webkit-scrollbar-thumb,
+        .theme-dark #source-preview-body:hover::-webkit-scrollbar-thumb,
+        .theme-dark #processed-files-modal-list:hover::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, rgba(100, 116, 139, 0.96), rgba(71, 85, 105, 0.96));
+            background-clip: content-box;
+        }
+
+        .theme-dark #chats-sidebar-toggle-btn,
+        .theme-dark #sources-panel-toggle-btn,
+        .theme-dark #settings-toggle-btn,
+        .theme-dark #theme-toggle-btn {
+            background: #0f172a !important;
+            color: #dbeafe !important;
+            border: 1px solid #334155 !important;
+            box-shadow: 0 6px 16px rgba(2, 6, 23, 0.35) !important;
+        }
+
+        .theme-dark #chats-sidebar-toggle-btn:hover,
+        .theme-dark #sources-panel-toggle-btn:hover,
+        .theme-dark #settings-toggle-btn:hover,
+        .theme-dark #theme-toggle-btn:hover {
+            background: #1e293b !important;
+            color: #93c5fd !important;
+        }
+
+        .theme-dark #chats-sidebar-toggle-btn.bg-blue-100,
+        .theme-dark #sources-panel-toggle-btn.bg-blue-100 {
+            background: #1e293b !important;
+            color: #bfdbfe !important;
+            border-color: #3b82f6 !important;
+        }
+
+        .theme-dark #sources-panel {
+            background: #0b1220 !important;
+            border-left: 1px solid #1f2937 !important;
+        }
+
+        .theme-dark #sources-panel > div {
+            border-color: #1f2937 !important;
+        }
+
+        .theme-dark #sources-panel > div:first-child {
+            background: #0f172a !important;
+        }
+
+        .theme-dark #sources-panel h3 {
+            color: #e2e8f0 !important;
+        }
+
+        .theme-dark #sources-panel h3 span {
+            background: #1e293b !important;
+            color: #93c5fd !important;
+        }
+
+        .theme-dark #sources-empty-state > div {
+            background: #111827 !important;
+            border: 1px dashed #334155 !important;
+            box-shadow: 0 12px 28px rgba(2, 6, 23, 0.35);
+        }
+
+        .theme-dark #sources-empty-state p:first-of-type {
+            color: #e2e8f0 !important;
+        }
+
+        .theme-dark #sources-empty-state p:last-of-type {
+            color: #94a3b8 !important;
+        }
+
+        .theme-dark #source-preview-body {
+            background: #111827 !important;
+            color: #cbd5e1 !important;
+            border: 1px solid #334155 !important;
+            border-radius: 12px;
+            margin: 0.4rem 1rem 0.55rem;
+            padding: 0.75rem 0.85rem !important;
+        }
+
+        .theme-dark #source-preview-body a {
+            color: #60a5fa !important;
+        }
+
+        .theme-dark #source-preview-body .text-blue-700,
+        .theme-dark #source-preview-body .text-slate-700 {
+            color: #cbd5e1 !important;
+        }
+
+        .theme-dark #sources-panel .border-t {
+            border-color: #1f2937 !important;
+            background: #0f172a !important;
+        }
+
+        .theme-dark #source-preview-file,
+        .theme-dark #source-preview-size {
+            color: #9fb1cc !important;
+        }
+
+        .theme-dark #open-source-file-btn {
+            background: #111827 !important;
+            color: #93c5fd !important;
+            border-color: #334155 !important;
+        }
+
+        .theme-dark #open-source-file-btn:hover:enabled {
+            background: #1e293b !important;
+            color: #bfdbfe !important;
+        }
+
+        .theme-dark #open-source-file-btn:disabled {
+            opacity: 0.45 !important;
+            color: #64748b !important;
+        }
+
+        .theme-dark .assistant-copy,
+        .theme-dark .assistant-regen-toggle {
+            color: #cbd5e1 !important;
+            border: 1px solid transparent;
+        }
+
+        .theme-dark .assistant-copy:hover,
+        .theme-dark .assistant-regen-toggle:hover {
+            background: #1e293b !important;
+            color: #ffffff !important;
+            border-color: #334155 !important;
+        }
+
+        .theme-dark .assistant-copy:disabled,
+        .theme-dark .assistant-regen-toggle:disabled {
+            opacity: 0.45 !important;
+        }
+
+        .theme-dark .markdown-body code {
+            background: #1e293b !important;
+            color: #bfdbfe !important;
+            border: 1px solid #334155;
+        }
+
+        .theme-dark .markdown-body pre {
+            background: #020617 !important;
+            color: #e2e8f0 !important;
+            border: 1px solid #334155;
+        }
+
+        .theme-dark .markdown-body pre code {
+            background: transparent !important;
+            color: inherit !important;
+            border: none;
+        }
+
+        .theme-dark .regen-menu {
+            background: #0f172a !important;
+            border-color: #334155 !important;
+            box-shadow: 0 14px 34px rgba(2, 6, 23, 0.55) !important;
+        }
+
+        .theme-dark .regen-menu button {
+            color: #dbeafe !important;
+            background: transparent !important;
+            border-color: #334155 !important;
+        }
+
+        .theme-dark .regen-menu button:hover {
+            background: #1e293b !important;
+            color: #ffffff !important;
+        }
+
+        .theme-dark #sources-panel [data-sources-section] > div:first-child {
+            background: #111827 !important;
+            color: #9fb1cc !important;
+            border-color: #334155 !important;
+        }
+
+        .theme-dark #sources-panel [data-citation-id] {
+            background: #111827 !important;
+            border-color: #334155 !important;
+            color: #dbeafe !important;
+        }
+
+        .theme-dark #sources-panel [data-citation-id]:hover {
+            background: #172033 !important;
+            border-color: #3b82f6 !important;
+        }
+
+        .theme-dark #sources-panel [data-citation-id].ring-2 {
+            border-color: #3b82f6 !important;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35) !important;
+        }
+
+        .theme-dark #llm-settings-modal .max-w-2xl {
+            background: #0f172a !important;
+            border-color: #334155 !important;
+            box-shadow: 0 24px 60px rgba(2, 6, 23, 0.6) !important;
+        }
+
+        .theme-dark #llm-settings-modal .bg-gradient-to-r {
+            background: #111827 !important;
+        }
+
+        .theme-dark #llm-settings-modal .border-b,
+        .theme-dark #llm-settings-modal .border-t,
+        .theme-dark #llm-settings-modal .border-gray-100,
+        .theme-dark #llm-settings-modal .border-gray-200 {
+            border-color: #1f2937 !important;
+        }
+
+        .theme-dark #llm-settings-modal .bg-gray-50 {
+            background: #111827 !important;
+        }
+
+        .theme-dark #llm-settings-modal .text-gray-900,
+        .theme-dark #llm-settings-modal .text-gray-800 {
+            color: #e2e8f0 !important;
+        }
+
+        .theme-dark #llm-settings-modal .text-gray-600,
+        .theme-dark #llm-settings-modal .text-gray-500 {
+            color: #94a3b8 !important;
+        }
+
+        .theme-dark #llm-settings-modal input,
+        .theme-dark #llm-settings-modal select,
+        .theme-dark #llm-settings-modal textarea {
+            background: #0f172a !important;
+            color: #e2e8f0 !important;
+            border-color: #334155 !important;
+        }
+
+        .theme-dark #llm-settings-modal input::placeholder,
+        .theme-dark #llm-settings-modal textarea::placeholder {
+            color: #8393ad !important;
+        }
+
+        .theme-dark #llm-settings-modal select {
+            color-scheme: dark;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 7.5L10 12.5L15 7.5' stroke='%2393a4c0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            background-size: 14px 14px;
+            padding-right: 2.5rem;
+        }
+
+        .theme-dark #llm-settings-modal select option {
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+
+        .theme-dark #llm-settings-modal select option:disabled {
+            color: #8fa1bd;
+        }
+
+        .theme-dark #llm-settings-modal input:focus,
+        .theme-dark #llm-settings-modal select:focus,
+        .theme-dark #llm-settings-modal textarea:focus {
+            border-color: #3b82f6 !important;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25) !important;
+        }
+
+        .theme-dark #processed-files-modal .absolute.inset-0.bg-black\/40 {
+            background: rgba(2, 6, 23, 0.72) !important;
+        }
+
+        .theme-dark #processed-files-modal .max-w-2xl {
+            background: #0f172a !important;
+            border-color: #334155 !important;
+            box-shadow: 0 24px 60px rgba(2, 6, 23, 0.6) !important;
+        }
+
+        .theme-dark #processed-files-modal .border-b {
+            border-color: #1f2937 !important;
+        }
+
+        .theme-dark #processed-files-modal .bg-gradient-to-r {
+            background: #111827 !important;
+        }
+
+        .theme-dark #processed-files-modal h3 {
+            color: #e2e8f0 !important;
+        }
+
+        .theme-dark #processed-files-modal .text-gray-500,
+        .theme-dark #processed-files-modal .text-gray-600 {
+            color: #94a3b8 !important;
+        }
+
+        .theme-dark #processed-files-modal-list > div {
+            border-color: #1f2937 !important;
+        }
+
+        .theme-dark #sources-panel-close-btn {
+            color: #cbd5e1 !important;
+            background: #111827 !important;
+            border: 1px solid #334155 !important;
+        }
+
+        .theme-dark #sources-panel-close-btn:hover {
+            background: #1e293b !important;
+            color: #ffffff !important;
+        }
+
+        .source-preview-card {
+            border: 1px solid #dbeafe;
+            border-radius: 12px;
+            background: #f8fbff;
+            padding: 0.75rem;
+        }
+
+        .source-preview-title {
+            color: #0f172a;
+            font-size: 0.95rem;
+            font-weight: 700;
+            margin-bottom: 0.3rem;
+        }
+
+        .source-preview-meta {
+            color: #64748b;
+            font-size: 0.75rem;
+            margin-bottom: 0.45rem;
+        }
+
+        .source-preview-text {
+            color: #1f2937;
+            font-size: 0.92rem;
+            line-height: 1.55;
+            white-space: pre-wrap;
+        }
+
+        .theme-dark .source-preview-card {
+            background: #111827 !important;
+            border-color: #334155 !important;
+            box-shadow: 0 12px 26px rgba(2, 6, 23, 0.35);
+        }
+
+        .theme-dark .source-preview-title {
+            color: #e2e8f0 !important;
+        }
+
+        .theme-dark .source-preview-meta {
+            color: #93a4c0 !important;
+        }
+
+        .theme-dark .source-preview-text {
+            color: #cbd5e1 !important;
+        }
+
+        .theme-dark #bottom-composer-host {
+            background: linear-gradient(to top, #0b1220 20%, rgba(11, 18, 32, 0.9) 58%, rgba(11, 18, 32, 0) 100%) !important;
+        }
+
+        .theme-dark .user-message .bg-purple-100 {
+            background: #1e3a8a !important;
+            color: #e0e7ff !important;
+            border: 1px solid #3b82f6;
+        }
+
+        .theme-dark .user-message .edit-user-msg {
+            color: #93a4c0 !important;
+        }
+
+        .theme-dark .user-message .edit-user-msg:hover {
+            color: #dbeafe !important;
+            background: #1e293b !important;
+        }
+    </style>
+</head>
+
+<body class="bg-white h-screen flex overflow-hidden font-sans text-brandText">
+    <div id="chats-sidebar-backdrop" class="mobile-drawer-backdrop"></div>
+    <div id="sources-panel-backdrop" class="mobile-drawer-backdrop"></div>
+    <!-- BEGIN: Sidebar -->
+    <aside id="saved-chats-sidebar" class="w-[300px] max-w-[82vw] bg-sidebar flex flex-col h-full border-r border-gray-100 flex-shrink-0 relative">
+        <!-- Sidebar Header: New Chat & Search -->
+        <div class="p-3 pb-0">
+            <!-- New Chat Button -->
+            <button id="new-chat-btn"
+                class="flex items-center gap-2 w-full px-3 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors mb-4 text-sm font-medium text-gray-700">
+                <i class="fa-solid fa-plus text-gray-500"></i>
+                <span>New chat</span>
+            </button>
+            <!-- Search Bar -->
+            <div class="relative mb-4">
+                <i
+                    class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-xs"></i>
+                <input id="search-chats-input"
+                    class="w-full bg-gray-100 border-none rounded-lg py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200 placeholder-gray-500 transition-all"
+                    placeholder="Search chats" type="text" />
+            </div>
+        </div>
+        <!-- Scrollable Navigation Area -->
+        <div class="flex-1 overflow-y-auto custom-scrollbar px-3">
+            <div class="mb-4">
+                <h3 class="px-3 text-xs font-medium text-gray-500 mb-2">Saved chats</h3>
+                <nav id="saved-chats-list" class="space-y-1"></nav>
+                <p id="saved-chats-empty" class="hidden px-3 py-2 text-sm text-gray-500">No saved chats yet.</p>
+            </div>
+        </div>
+    </aside>
+    <!-- END: Sidebar -->
+    <!-- BEGIN: Main Content -->
+    <main class="flex-1 flex h-full relative overflow-hidden">
+        <section id="chat-main-column" class="flex-1 flex flex-col h-full relative overflow-y-auto">
+        <!-- Top Navigation / User Controls -->
+        <div id="top-nav" class="sticky top-0 z-20 w-full bg-white/90 backdrop-blur px-6 py-3 flex items-center justify-between gap-3">
+            <div class="flex items-center">
+                <button id="chats-sidebar-toggle-btn"
+                    class="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors text-gray-600"
+                    title="Toggle saved chats">
+                    <i class="fa-solid fa-bars text-base"></i>
+                </button>
+            </div>
+            <div class="flex items-center gap-3">
+            <button id="sources-panel-toggle-btn"
+                class="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors text-gray-600"
+                title="Toggle sources panel">
+                <i class="fa-solid fa-book-open text-base"></i>
+            </button>
+            <button id="settings-toggle-btn"
+                class="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors text-gray-600"
+                title="LLM settings">
+                <i class="fa-solid fa-gear text-base"></i>
+            </button>
+            <button id="theme-toggle-btn"
+                class="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors text-gray-600">
+                <i id="theme-toggle-icon" class="fa-regular fa-moon text-lg"></i>
+            </button>
+            </div>
+        </div>
+        <!-- Center Content Container -->
+        <div id="main-content-stack" class="flex-1 flex flex-col items-center justify-center w-full max-w-3xl mx-auto px-4 sm:px-6 py-8">
+            <!-- Hero Heading -->
+            <div id="hero-heading" class="text-center mb-12">
+                <h1 class="text-4xl font-semibold text-gray-900">Where should we begin?</h1>
+            </div>
+            <div id="chat-thread" class="hidden w-full space-y-6 mb-6"></div>
+            <!-- Input Area -->
+            <div id="composer-shell" class="w-full mb-8 relative">
+                <div
+                    class="relative flex flex-col w-full bg-white rounded-3xl border border-gray-200 focus-within:border-gray-300 focus-within:shadow-md transition-all p-4 min-h-[76px] shadow-xl">
+                    <textarea id="chat-input"
+                        class="w-full resize-none border-none focus:ring-0 p-0 text-lg leading-7 placeholder:text-gray-400 text-gray-800 bg-transparent overflow-y-auto max-h-[220px]"
+                        placeholder="Ask anything" rows="1"></textarea>
+                    <div class="flex items-center justify-between mt-4">
+                        <div class="flex items-center gap-3">
+                            <button id="attach-files-btn"
+                                class="w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition-colors"
+                                title="Add attachment">
+                                <i class="fa-solid fa-plus"></i>
+                            </button>
+                            <button id="open-processed-files-btn"
+                                class="w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition-colors"
+                                title="Open processed files">
+                                <i class="fa-regular fa-folder-open"></i>
+                            </button>
+                            <input id="add-files-input" type="file" multiple class="hidden" />
+                            <button id="send-btn"
+                                class="hidden w-9 h-9 rounded-full bg-blue-600 hover:bg-blue-700 items-center justify-center text-white transition-colors"
+                                title="Send">
+                                <i class="fa-solid fa-paper-plane text-sm"></i>
+                            </button>
+                        </div>
+                        <div id="chat-mode-dropdown" class="relative">
+                            <input id="chat-mode" type="hidden" value="accurate" />
+                            <button id="chat-mode-toggle" type="button"
+                                class="group flex items-center gap-2 pl-3 pr-2 py-1.5 bg-white border border-gray-200 rounded-full shadow-sm hover:border-gray-300 hover:shadow focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all">
+                                <i class="fa-regular fa-clock text-[11px] text-blue-600"></i>
+                                <span id="chat-mode-label" class="text-xs font-semibold text-gray-700">Accurate</span>
+                                <span
+                                    class="w-5 h-5 rounded-full bg-gray-100 group-hover:bg-gray-200 transition-colors flex items-center justify-center">
+                                    <i id="chat-mode-chevron"
+                                        class="fa-solid fa-chevron-down text-[9px] text-gray-500 transition-transform"></i>
+                                </span>
+                            </button>
+                            <div id="chat-mode-menu"
+                                class="hidden absolute right-0 mt-2 w-44 rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden z-20">
+                                <button type="button" data-mode-option="general"
+                                    class="mode-option w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors">
+                                    <div class="mode-option-title text-sm font-semibold text-gray-800">General</div>
+                                    <div class="mode-option-desc text-[11px] text-gray-500">No file search</div>
+                                </button>
+                                <button type="button" data-mode-option="accurate"
+                                    class="mode-option w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors border-t border-gray-100">
+                                    <div class="mode-option-title text-sm font-semibold text-gray-800">Accurate</div>
+                                    <div class="mode-option-desc text-[11px] text-gray-500">Better quality</div>
+                                </button>
+                                <button type="button" data-mode-option="moderate"
+                                    class="mode-option w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors border-t border-gray-100">
+                                    <div class="mode-option-title text-sm font-semibold text-gray-800">Moderate</div>
+                                    <div class="mode-option-desc text-[11px] text-gray-500">Balanced quality/speed</div>
+                                </button>
+                                <button type="button" data-mode-option="fast"
+                                    class="mode-option w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors border-t border-gray-100">
+                                    <div class="mode-option-title text-sm font-semibold text-gray-800">Fast</div>
+                                    <div class="mode-option-desc text-[11px] text-gray-500">Quicker answers</div>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="file-processing-card" class="w-full">
+                <div class="rounded-2xl border border-gray-200 bg-white shadow-sm p-4">
+                    <div class="flex items-center justify-between gap-3 mb-2">
+                        <h3 class="text-sm font-semibold text-gray-800">File processing</h3>
+                        <span id="index-state-badge"
+                            class="text-[11px] font-medium px-2 py-1 rounded-full bg-gray-100 text-gray-600">Idle</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs text-gray-500 mb-2">
+                        <span id="indexing-label">No files processed yet</span>
+                        <span id="index-percent" class="font-semibold text-gray-700">0%</span>
+                    </div>
+                    <div class="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden mb-3">
+                        <div id="index-progress-bar" class="h-full bg-blue-500 w-0 rounded-full"></div>
+                    </div>
+                    <div class="flex items-center justify-between mb-2">
+                        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Processed files</p>
+                        <p id="processed-files-summary" class="text-xs text-gray-500">0 processed</p>
+                    </div>
+                    <div id="processed-files-list"
+                        class="max-h-32 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50 divide-y divide-gray-100">
+                        <div class="px-3 py-2 text-xs text-gray-500">Use the + button to add files for processing.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="bottom-composer-host" class="hidden sticky bottom-0 z-20 pt-2 pb-3 bg-gradient-to-t from-white via-white to-transparent">
+            <div id="bottom-composer-container" class="w-full max-w-3xl mx-auto px-4 sm:px-6"></div>
+        </div>
+        <!-- Footer / Disclaimer -->
+        <div id="footer-disclaimer" class="absolute bottom-2 w-full text-center p-2">
+            <p class="text-[10px] text-gray-400">OfflineLLM can make mistakes. Check important info.</p>
+        </div>
+        </section>
+        <aside id="sources-panel" class="panel-collapsed flex w-[430px] max-w-[46vw] h-full border-l border-blue-100/70 bg-gradient-to-b from-slate-50 to-white flex-col">
+            <div class="px-4 py-3 border-b border-blue-100/80 bg-gradient-to-r from-white to-blue-50/80 flex items-center justify-between">
+                <h3 class="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                    <span class="w-6 h-6 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
+                        <i class="fa-solid fa-book text-[11px]"></i>
+                    </span>
+                    Sources
+                </h3>
+                <button id="sources-panel-close-btn"
+                    class="w-7 h-7 rounded-full hover:bg-blue-100 text-slate-500 hover:text-blue-700 flex items-center justify-center transition-colors"
+                    title="Close sources">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div id="sources-empty-state" class="px-4 py-4">
+                <div class="rounded-2xl border border-dashed border-blue-200 bg-white/90 p-4 text-center">
+                    <div class="w-9 h-9 mx-auto mb-2 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center">
+                        <i class="fa-solid fa-link text-xs"></i>
+                    </div>
+                    <p class="text-sm font-medium text-slate-700">No sources yet</p>
+                    <p class="text-xs text-slate-500 mt-1">Sources will appear here for each response.</p>
+                </div>
+            </div>
+            <div id="sources-response-list" class="hidden flex-1 overflow-y-auto p-4 space-y-4"></div>
+            <div class="border-t border-blue-100/80 bg-white/95 backdrop-blur-sm">
+                <div class="px-4 pt-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Source preview</div>
+                <div id="source-preview-body" class="max-h-56 overflow-y-auto px-4 pt-2 pb-3 text-sm text-slate-700">
+                    Select a citation like C1 to preview.
+                </div>
+                <div class="px-4 py-2 border-t border-blue-100 text-[11px] text-slate-500 bg-slate-50/70">
+                    <div class="flex items-end justify-between gap-3">
+                        <div class="min-w-0">
+                            <div id="source-preview-file" class="truncate">File: -</div>
+                            <div id="source-preview-size" class="mt-1">Size: -</div>
+                        </div>
+                        <button id="open-source-file-btn"
+                            class="px-2.5 py-1.5 rounded-lg border border-blue-200 bg-white text-blue-700 text-xs font-semibold hover:bg-blue-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            disabled>
+                            Open file
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </main>
+    <!-- END: Main Content -->
+    <!-- Auto-resize textarea script -->
+    <script data-purpose="textarea-autoresize">
+        const textarea = document.getElementById('chat-input');
+        const sendBtn = document.getElementById('send-btn');
+        const MAX_TEXTAREA_HEIGHT = 220;
+
+        function updateSendVisibility() {
+            if (!textarea || !sendBtn) return;
+            const hasText = (textarea.value || '').trim().length > 0;
+            const isStreaming = Boolean(window.__isChatStreaming);
+            const show = hasText || isStreaming;
+            sendBtn.classList.toggle('hidden', !show);
+            sendBtn.classList.toggle('flex', show);
+        }
+
+        function resizeTextarea() {
+            if (!textarea) return;
+            textarea.style.height = 'auto';
+            const nextHeight = Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT);
+            textarea.style.height = `${nextHeight}px`;
+            textarea.style.overflowY = textarea.scrollHeight > MAX_TEXTAREA_HEIGHT ? 'auto' : 'hidden';
+            updateSendVisibility();
+        }
+
+        function handleSendMessage() {
+            if (!textarea) return;
+            const message = (textarea.value || '').trim();
+            if (!message) return;
+            if (typeof window.__handleComposerSend === 'function') {
+                window.__handleComposerSend(message);
+            }
+        }
+
+        if (textarea) {
+            textarea.addEventListener('input', resizeTextarea);
+            textarea.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    handleSendMessage();
+                } else if (event.key === 'Enter' && event.shiftKey) {
+                    // Resize immediately after newline insertion.
+                    setTimeout(resizeTextarea, 0);
+                }
+            });
+            resizeTextarea();
+            updateSendVisibility();
+        }
+
+        if (sendBtn) {
+            sendBtn.addEventListener('click', () => {
+                if (window.__isChatStreaming && typeof window.__interruptStream === 'function') {
+                    window.__interruptStream();
+                    return;
+                }
+                handleSendMessage();
+            });
+        }
+
+        window.__resizeComposer = resizeTextarea;
+        window.__updateSendVisibility = updateSendVisibility;
+    </script>
+    <div id="processed-files-modal" class="js-modal hidden fixed inset-0 z-50">
+        <div id="processed-files-modal-overlay" class="js-modal-overlay absolute inset-0 bg-black/40 backdrop-blur-[1px]"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="js-modal-card w-full max-w-2xl rounded-2xl bg-white shadow-2xl border border-gray-200 overflow-hidden">
+                <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50">
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900">Processed Files</h3>
+                        <p id="processed-files-modal-summary" class="text-xs text-gray-500 mt-0.5">0 files</p>
+                    </div>
+                    <button id="close-processed-files-modal-btn"
+                        class="w-8 h-8 rounded-full hover:bg-white/80 text-gray-600 flex items-center justify-center transition-colors"
+                        title="Close">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div id="processed-files-modal-list" class="max-h-[60vh] overflow-y-auto divide-y divide-gray-100">
+                    <div class="px-5 py-4 text-sm text-gray-500">No files yet.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="llm-settings-modal" class="js-modal hidden fixed inset-0 z-50">
+        <div id="llm-settings-overlay" class="js-modal-overlay absolute inset-0 bg-black/40 backdrop-blur-[1px]"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="js-modal-card w-full max-w-2xl rounded-2xl bg-white shadow-2xl border border-gray-200 overflow-hidden">
+                <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50">
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900">LLM Settings</h3>
+                        <p class="text-xs text-gray-500 mt-0.5">Choose provider, model, and credentials.</p>
+                    </div>
+                    <button id="close-llm-settings-btn"
+                        class="w-8 h-8 rounded-full hover:bg-white/80 text-gray-600 flex items-center justify-center transition-colors"
+                        title="Close">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="p-5 space-y-4 max-h-[70vh] overflow-y-auto" id="llm-settings-body">
+                    <div>
+                        <label class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Provider</label>
+                        <select id="llm-provider-select" class="mt-1 w-full rounded-lg border-gray-300 text-sm">
+                            <option value="ollama">Ollama</option>
+                            <option value="openai">OpenAI API</option>
+                            <option value="deepseek">DeepSeek API</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Temperature</label>
+                        <input id="llm-temperature-input" type="number" min="0" max="2" step="0.1" class="mt-1 w-full rounded-lg border-gray-300 text-sm" />
+                    </div>
+                    <div id="llm-openai-section" class="hidden space-y-3 rounded-xl border border-gray-200 p-3">
+                        <h4 class="text-sm font-semibold text-gray-800">OpenAI</h4>
+                        <input id="openai-model-input" class="w-full rounded-lg border-gray-300 text-sm" placeholder="Model (e.g. gpt-4o-mini)" />
+                        <input id="openai-api-key-input" type="password" class="w-full rounded-lg border-gray-300 text-sm" placeholder="API key" />
+                    </div>
+                    <div id="llm-deepseek-section" class="hidden space-y-3 rounded-xl border border-gray-200 p-3">
+                        <h4 class="text-sm font-semibold text-gray-800">DeepSeek</h4>
+                        <input id="deepseek-model-input" class="w-full rounded-lg border-gray-300 text-sm" placeholder="Model (e.g. deepseek-chat)" />
+                        <input id="deepseek-api-key-input" type="password" class="w-full rounded-lg border-gray-300 text-sm" placeholder="API key" />
+                    </div>
+                    <div id="llm-ollama-section" class="space-y-3 rounded-xl border border-gray-200 p-3">
+                        <h4 class="text-sm font-semibold text-gray-800">Ollama</h4>
+                        <select id="ollama-model-select" class="w-full rounded-lg border-gray-300 text-sm"></select>
+                        <input id="ollama-custom-model-input" class="w-full rounded-lg border-gray-300 text-sm" placeholder="Custom model id (optional)" />
+                        <div class="flex items-center gap-2">
+                            <button id="ollama-refresh-models-btn" class="px-3 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50">Refresh models</button>
+                            <button id="ollama-download-model-btn" class="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700">Download model</button>
+                        </div>
+                        <div id="ollama-download-progress" class="hidden">
+                            <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
+                                <span id="ollama-download-label">Downloading...</span>
+                                <span id="ollama-download-percent">0%</span>
+                            </div>
+                            <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                <div id="ollama-download-bar" class="h-full w-0 bg-blue-500"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="px-5 py-3 border-t border-gray-100 flex items-center justify-end gap-2 bg-gray-50">
+                    <button id="save-llm-settings-btn" class="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script data-purpose="saved-chats-sidebar">
+        const savedChatsList = document.getElementById('saved-chats-list');
+        const savedChatsEmpty = document.getElementById('saved-chats-empty');
+        const searchChatsInput = document.getElementById('search-chats-input');
+        const newChatBtn = document.getElementById('new-chat-btn');
+        const chatModeInput = document.getElementById('chat-mode');
+        const chatModeDropdown = document.getElementById('chat-mode-dropdown');
+        const chatModeToggle = document.getElementById('chat-mode-toggle');
+        const chatModeMenu = document.getElementById('chat-mode-menu');
+        const chatModeLabel = document.getElementById('chat-mode-label');
+        const chatModeChevron = document.getElementById('chat-mode-chevron');
+        const modeOptionButtons = Array.from(document.querySelectorAll('.mode-option'));
+        const chatThread = document.getElementById('chat-thread');
+        const chatMainColumn = document.getElementById('chat-main-column');
+        const heroHeading = document.getElementById('hero-heading');
+        const mainContentStack = document.getElementById('main-content-stack');
+        const composerShell = document.getElementById('composer-shell');
+        const fileProcessingCard = document.getElementById('file-processing-card');
+        const bottomComposerHost = document.getElementById('bottom-composer-host');
+        const bottomComposerContainer = document.getElementById('bottom-composer-container');
+        const chatInput = document.getElementById('chat-input');
+        const composerSendBtn = document.getElementById('send-btn');
+        const attachFilesBtn = document.getElementById('attach-files-btn');
+        const openProcessedFilesBtn = document.getElementById('open-processed-files-btn');
+        const addFilesInput = document.getElementById('add-files-input');
+        const indexStateBadge = document.getElementById('index-state-badge');
+        const indexingLabel = document.getElementById('indexing-label');
+        const indexPercent = document.getElementById('index-percent');
+        const indexProgressBar = document.getElementById('index-progress-bar');
+        const processedFilesSummary = document.getElementById('processed-files-summary');
+        const processedFilesList = document.getElementById('processed-files-list');
+        const processedFilesModal = document.getElementById('processed-files-modal');
+        const processedFilesModalOverlay = document.getElementById('processed-files-modal-overlay');
+        const closeProcessedFilesModalBtn = document.getElementById('close-processed-files-modal-btn');
+        const processedFilesModalSummary = document.getElementById('processed-files-modal-summary');
+        const processedFilesModalList = document.getElementById('processed-files-modal-list');
+        const chatsSidebarBackdrop = document.getElementById('chats-sidebar-backdrop');
+        const sourcesPanelBackdrop = document.getElementById('sources-panel-backdrop');
+        const savedChatsSidebar = document.getElementById('saved-chats-sidebar');
+        const chatsSidebarToggleBtn = document.getElementById('chats-sidebar-toggle-btn');
+        const sourcesPanelToggleBtn = document.getElementById('sources-panel-toggle-btn');
+        const settingsToggleBtn = document.getElementById('settings-toggle-btn');
+        const themeToggleBtn = document.getElementById('theme-toggle-btn');
+        const themeToggleIcon = document.getElementById('theme-toggle-icon');
+        const llmSettingsModal = document.getElementById('llm-settings-modal');
+        const llmSettingsOverlay = document.getElementById('llm-settings-overlay');
+        const closeLlmSettingsBtn = document.getElementById('close-llm-settings-btn');
+        const saveLlmSettingsBtn = document.getElementById('save-llm-settings-btn');
+        const llmProviderSelect = document.getElementById('llm-provider-select');
+        const llmTemperatureInput = document.getElementById('llm-temperature-input');
+        const llmOpenAiSection = document.getElementById('llm-openai-section');
+        const llmDeepSeekSection = document.getElementById('llm-deepseek-section');
+        const llmOllamaSection = document.getElementById('llm-ollama-section');
+        const openAiModelInput = document.getElementById('openai-model-input');
+        const openAiApiKeyInput = document.getElementById('openai-api-key-input');
+        const deepSeekModelInput = document.getElementById('deepseek-model-input');
+        const deepSeekApiKeyInput = document.getElementById('deepseek-api-key-input');
+        const ollamaModelSelect = document.getElementById('ollama-model-select');
+        const ollamaCustomModelInput = document.getElementById('ollama-custom-model-input');
+        const ollamaRefreshModelsBtn = document.getElementById('ollama-refresh-models-btn');
+        const ollamaDownloadModelBtn = document.getElementById('ollama-download-model-btn');
+        const ollamaDownloadProgress = document.getElementById('ollama-download-progress');
+        const ollamaDownloadLabel = document.getElementById('ollama-download-label');
+        const ollamaDownloadPercent = document.getElementById('ollama-download-percent');
+        const ollamaDownloadBar = document.getElementById('ollama-download-bar');
+        const sourcesPanel = document.getElementById('sources-panel');
+        const sourcesPanelCloseBtn = document.getElementById('sources-panel-close-btn');
+        const sourcesEmptyState = document.getElementById('sources-empty-state');
+        const sourcesResponseList = document.getElementById('sources-response-list');
+        const sourcePreviewBody = document.getElementById('source-preview-body');
+        const sourcePreviewFile = document.getElementById('source-preview-file');
+        const sourcePreviewSize = document.getElementById('source-preview-size');
+        const openSourceFileBtn = document.getElementById('open-source-file-btn');
+        const footerDisclaimer = document.getElementById('footer-disclaimer');
+        let allChats = [];
+        let fileProcessItems = [];
+        let isIndexing = false;
+        let activeUploadId = null;
+        let isChatStreaming = false;
+        let currentStreamAbortController = null;
+        let editingUserMessageEl = null;
+        let isConversationStarted = false;
+        let activeChatId = null;
+        let shouldAutoTitle = false;
+        let responseCounter = 0;
+        let citationMap = {};
+        let currentPreviewChunkId = null;
+        let isChatsSidebarOpen = true;
+        const MODAL_ANIMATION_MS = 220;
+        const MOBILE_DRAWER_MQ = window.matchMedia('(max-width: 900px)');
+
+        function isMobileDrawerMode() {
+            return MOBILE_DRAWER_MQ.matches;
+        }
+
+        function isSourcesPanelOpen() {
+            return Boolean(sourcesPanel && !sourcesPanel.classList.contains('panel-collapsed'));
+        }
+
+        function setBackdropOpen(backdropEl, open) {
+            if (!backdropEl) return;
+            backdropEl.classList.toggle('backdrop-open', Boolean(open) && isMobileDrawerMode());
+        }
+
+        function updateBodyModalLock() {
+            const hasVisibleModal = Array.from(document.querySelectorAll('.js-modal'))
+                .some((el) => !el.classList.contains('hidden'));
+            document.body.classList.toggle('modal-opened', hasVisibleModal);
+        }
+
+        function openModalAnimated(modalEl) {
+            if (!modalEl) return;
+            modalEl.classList.remove('hidden');
+            requestAnimationFrame(() => {
+                modalEl.classList.add('modal-open');
+            });
+            updateBodyModalLock();
+        }
+
+        async function closeModalAnimated(modalEl) {
+            if (!modalEl) return;
+            modalEl.classList.remove('modal-open');
+            await new Promise((resolve) => setTimeout(resolve, MODAL_ANIMATION_MS));
+            if (!modalEl.classList.contains('modal-open')) {
+                modalEl.classList.add('hidden');
+            }
+            updateBodyModalLock();
+        }
+
+        function getCurrentTheme() {
+            return document.documentElement.classList.contains('theme-dark') ? 'dark' : 'light';
+        }
+
+        function applyTheme(theme) {
+            const dark = theme === 'dark';
+            document.documentElement.classList.toggle('theme-dark', dark);
+            if (themeToggleIcon) {
+                themeToggleIcon.className = dark ? 'fa-regular fa-sun text-lg' : 'fa-regular fa-moon text-lg';
+            }
+            try {
+                localStorage.setItem('offline_theme', dark ? 'dark' : 'light');
+            } catch (_e) {}
+        }
+
+        function setProviderSections(provider) {
+            if (!llmOpenAiSection || !llmDeepSeekSection || !llmOllamaSection) return;
+            llmOpenAiSection.classList.toggle('hidden', provider !== 'openai');
+            llmDeepSeekSection.classList.toggle('hidden', provider !== 'deepseek');
+            llmOllamaSection.classList.toggle('hidden', provider !== 'ollama');
+        }
+
+        async function loadOllamaModels(selectedName) {
+            if (!ollamaModelSelect) return;
+            try {
+                const res = await fetch('/settings/ollama/models');
+                if (!res.ok) throw new Error('failed');
+                const payload = await res.json();
+                const downloaded = Array.isArray(payload.models) ? payload.models : [];
+                const recommended = Array.isArray(payload.recommended) ? payload.recommended : [];
+
+                ollamaModelSelect.innerHTML = '';
+                const addOption = (value, label) => {
+                    if (!value) return;
+                    const opt = document.createElement('option');
+                    opt.value = value;
+                    opt.textContent = label || value;
+                    ollamaModelSelect.appendChild(opt);
+                };
+                const addDivider = (label) => {
+                    const opt = document.createElement('option');
+                    opt.value = '';
+                    opt.textContent = label;
+                    opt.disabled = true;
+                    ollamaModelSelect.appendChild(opt);
+                };
+
+                if (downloaded.length) {
+                    addDivider('--Downloaded--');
+                    downloaded.forEach((m) => addOption(String(m.name || ''), `${m.name}`));
+                }
+                addDivider('--Suggested--');
+                recommended.forEach((m) => addOption(String(m.name || ''), `${m.label || m.name}`));
+
+                if (!ollamaModelSelect.options.length) {
+                    addOption('llama3.2:1b', 'llama3.2:1b (recommended)');
+                }
+
+                if (selectedName) {
+                    ollamaModelSelect.value = selectedName;
+                }
+            } catch (_e) {
+                if (!ollamaModelSelect.options.length) {
+                    ollamaModelSelect.innerHTML = '<option value=\"llama3.2:1b\">llama3.2:1b (fallback)</option>';
+                }
+            }
+        }
+
+        async function loadLlmSettings() {
+            try {
+                const res = await fetch('/settings/llm');
+                if (!res.ok) throw new Error('failed');
+                const cfg = await res.json();
+                const provider = String(cfg.provider || 'ollama');
+                if (llmProviderSelect) llmProviderSelect.value = provider;
+                if (llmTemperatureInput) llmTemperatureInput.value = String(cfg.temperature ?? 0.1);
+                if (openAiModelInput) openAiModelInput.value = String((cfg.openai || {}).model || '');
+                if (deepSeekModelInput) deepSeekModelInput.value = String((cfg.deepseek || {}).model || '');
+                setProviderSections(provider);
+                await loadOllamaModels(String((cfg.ollama || {}).model || ''));
+            } catch (_e) {
+                setProviderSections('ollama');
+                await loadOllamaModels('llama3.2:1b');
+            }
+        }
+
+        function openLlmSettingsModal() {
+            if (!llmSettingsModal) return;
+            openModalAnimated(llmSettingsModal);
+            loadLlmSettings();
+        }
+
+        async function closeLlmSettingsModal() {
+            if (!llmSettingsModal) return;
+            await closeModalAnimated(llmSettingsModal);
+        }
+
+        async function saveLlmSettings() {
+            const provider = String((llmProviderSelect && llmProviderSelect.value) || 'ollama');
+            const payload = {
+                provider,
+                temperature: Number((llmTemperatureInput && llmTemperatureInput.value) || 0.1),
+                ollama: {
+                    model: (ollamaCustomModelInput && ollamaCustomModelInput.value.trim()) || (ollamaModelSelect && ollamaModelSelect.value) || '',
+                },
+                openai: {
+                    model: (openAiModelInput && openAiModelInput.value.trim()) || 'gpt-4o-mini',
+                    api_key: (openAiApiKeyInput && openAiApiKeyInput.value.trim()) || undefined,
+                },
+                deepseek: {
+                    model: (deepSeekModelInput && deepSeekModelInput.value.trim()) || 'deepseek-chat',
+                    api_key: (deepSeekApiKeyInput && deepSeekApiKeyInput.value.trim()) || undefined,
+                },
+            };
+            const res = await fetch('/settings/llm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) {
+                const txt = await res.text();
+                alert(`Failed to save settings: ${txt}`);
+                return;
+            }
+            closeLlmSettingsModal();
+        }
+
+        async function pullOllamaModel() {
+            const modelName = (ollamaCustomModelInput && ollamaCustomModelInput.value.trim()) || (ollamaModelSelect && ollamaModelSelect.value) || '';
+            if (!modelName) {
+                alert('Select or type a model name first.');
+                return;
+            }
+            if (ollamaDownloadProgress) ollamaDownloadProgress.classList.remove('hidden');
+            if (ollamaDownloadBar) ollamaDownloadBar.style.width = '0%';
+            if (ollamaDownloadPercent) ollamaDownloadPercent.textContent = '0%';
+            if (ollamaDownloadLabel) ollamaDownloadLabel.textContent = `Downloading ${modelName}...`;
+            if (ollamaDownloadModelBtn) ollamaDownloadModelBtn.disabled = true;
+
+            try {
+                const res = await fetch('/settings/ollama/pull', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: modelName }),
+                });
+                if (!res.ok || !res.body) {
+                    throw new Error('Pull request failed.');
+                }
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const blocks = buffer.split('\n\n');
+                    buffer = blocks.pop() || '';
+                    for (const block of blocks) {
+                        const lines = block.split('\n').filter(Boolean);
+                        let eventName = 'progress';
+                        let dataStr = '';
+                        for (const line of lines) {
+                            if (line.startsWith('event:')) eventName = line.slice(6).trim();
+                            if (line.startsWith('data:')) dataStr += line.slice(5).trim();
+                        }
+                        if (!dataStr) continue;
+                        let payload;
+                        try { payload = JSON.parse(dataStr); } catch { continue; }
+                        if (eventName === 'progress') {
+                            const pct = Number(payload.percent || 0);
+                            if (ollamaDownloadBar && Number.isFinite(pct)) ollamaDownloadBar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+                            if (ollamaDownloadPercent && Number.isFinite(pct)) ollamaDownloadPercent.textContent = `${pct.toFixed(1)}%`;
+                            if (ollamaDownloadLabel) ollamaDownloadLabel.textContent = String(payload.status || 'Downloading...');
+                        } else if (eventName === 'done') {
+                            if (ollamaDownloadBar) ollamaDownloadBar.style.width = '100%';
+                            if (ollamaDownloadPercent) ollamaDownloadPercent.textContent = '100%';
+                            if (ollamaDownloadLabel) ollamaDownloadLabel.textContent = 'Download complete';
+                        } else if (eventName === 'error') {
+                            throw new Error(String(payload.error || 'Download failed'));
+                        }
+                    }
+                }
+                await loadOllamaModels(modelName);
+            } catch (error) {
+                alert(String(error && error.message ? error.message : error));
+            } finally {
+                if (ollamaDownloadModelBtn) ollamaDownloadModelBtn.disabled = false;
+            }
+        }
+
+        function renderSavedChats() {
+            const query = (searchChatsInput?.value || '').trim().toLowerCase();
+            const filtered = allChats.filter((chat) => (chat.title || '').toLowerCase().includes(query));
+            savedChatsList.innerHTML = '';
+            savedChatsEmpty.classList.toggle('hidden', filtered.length > 0);
+
+            filtered.forEach((chat) => {
+                const row = document.createElement('div');
+                row.className = `saved-chat-row group flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm ${chat.id === activeChatId ? 'saved-chat-row-active' : 'text-gray-700'}`;
+
+                const titleBtn = document.createElement('button');
+                titleBtn.type = 'button';
+                titleBtn.className = 'min-w-0 flex-1 text-left truncate';
+                titleBtn.textContent = chat.title || 'Untitled chat';
+                titleBtn.title = chat.title || 'Untitled chat';
+                titleBtn.dataset.chatId = chat.id;
+                titleBtn.addEventListener('click', async () => {
+                    await openChat(chat.id);
+                });
+
+                const renameBtn = document.createElement('button');
+                renameBtn.type = 'button';
+                renameBtn.className = 'saved-chat-action w-7 h-7 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center flex-shrink-0';
+                renameBtn.title = 'Rename chat';
+                renameBtn.setAttribute('aria-label', 'Rename chat');
+                renameBtn.innerHTML = '<i class="fa-regular fa-pen-to-square text-xs"></i>';
+                renameBtn.addEventListener('click', async (event) => {
+                    event.stopPropagation();
+                    await renameChat(chat);
+                });
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.type = 'button';
+                deleteBtn.className = 'saved-chat-action w-7 h-7 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors flex items-center justify-center flex-shrink-0';
+                deleteBtn.title = 'Delete chat';
+                deleteBtn.setAttribute('aria-label', 'Delete chat');
+                deleteBtn.innerHTML = '<i class="fa-regular fa-trash-can text-xs"></i>';
+                deleteBtn.addEventListener('click', async (event) => {
+                    event.stopPropagation();
+                    const originalDeleteHtml = deleteBtn.innerHTML;
+                    deleteBtn.disabled = true;
+                    renameBtn.disabled = true;
+                    titleBtn.disabled = true;
+                    row.classList.add('opacity-70');
+                    deleteBtn.classList.add('cursor-not-allowed');
+                    deleteBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-xs"></i>';
+                    const ok = await deleteChat(chat.id);
+                    if (!ok) {
+                        deleteBtn.disabled = false;
+                        renameBtn.disabled = false;
+                        titleBtn.disabled = false;
+                        row.classList.remove('opacity-70');
+                        deleteBtn.classList.remove('cursor-not-allowed');
+                        deleteBtn.innerHTML = originalDeleteHtml;
+                        alert('Failed to delete chat. Please try again.');
+                    }
+                });
+
+                row.appendChild(titleBtn);
+                row.appendChild(renameBtn);
+                row.appendChild(deleteBtn);
+                savedChatsList.appendChild(row);
+            });
+        }
+
+        function setIndexState(status) {
+            if (!indexStateBadge) return;
+            if (status === 'indexing') {
+                indexStateBadge.className = 'text-[11px] font-medium px-2 py-1 rounded-full bg-amber-100 text-amber-700';
+                indexStateBadge.textContent = 'Indexing';
+            } else if (status === 'ready') {
+                indexStateBadge.className = 'text-[11px] font-medium px-2 py-1 rounded-full bg-emerald-100 text-emerald-700';
+                indexStateBadge.textContent = 'Ready';
+            } else if (status === 'failed') {
+                indexStateBadge.className = 'text-[11px] font-medium px-2 py-1 rounded-full bg-red-100 text-red-700';
+                indexStateBadge.textContent = 'Failed';
+            } else {
+                indexStateBadge.className = 'text-[11px] font-medium px-2 py-1 rounded-full bg-gray-100 text-gray-600';
+                indexStateBadge.textContent = 'Idle';
+            }
+        }
+
+        function setIndexProgress(progress, label) {
+            const pct = Math.max(0, Math.min(100, Number(progress) || 0));
+            if (indexPercent) indexPercent.textContent = `${pct.toFixed(1)}%`;
+            if (indexProgressBar) indexProgressBar.style.width = `${pct}%`;
+            if (label && indexingLabel) indexingLabel.textContent = label;
+        }
+
+        function renderProcessedFiles() {
+            if (!processedFilesList || !processedFilesSummary) return;
+            processedFilesList.innerHTML = '';
+            if (!fileProcessItems.length) {
+                processedFilesList.innerHTML = '<div class="px-3 py-2 text-xs text-gray-500">Use the + button to add files for processing.</div>';
+                processedFilesSummary.textContent = '0 processed';
+                if (processedFilesModalSummary) processedFilesModalSummary.textContent = '0 files';
+                if (processedFilesModalList) processedFilesModalList.innerHTML = '<div class="px-5 py-4 text-sm text-gray-500">No files yet.</div>';
+                return;
+            }
+
+            let processedCount = 0;
+            fileProcessItems.forEach((item) => {
+                if (item.status === 'processed') processedCount += 1;
+                const statusClass =
+                    item.status === 'processed'
+                        ? 'text-emerald-700'
+                        : item.status === 'processing'
+                            ? 'text-amber-700'
+                            : item.status === 'failed'
+                                ? 'text-red-700'
+                                : 'text-gray-500';
+
+                const row = document.createElement('div');
+                row.className = 'px-3 py-2 flex items-center justify-between gap-3 text-xs';
+                row.innerHTML = `
+                    <div class="truncate text-gray-700">${escapeHtml(item.name)}</div>
+                    <div class="shrink-0 font-semibold ${statusClass}">${escapeHtml(item.status)}</div>
+                `;
+                processedFilesList.appendChild(row);
+            });
+
+            processedFilesSummary.textContent = `${processedCount} processed / ${fileProcessItems.length} total`;
+            if (processedFilesModalSummary) {
+                processedFilesModalSummary.textContent = `${processedCount} processed / ${fileProcessItems.length} total`;
+            }
+            if (processedFilesModalList) {
+                processedFilesModalList.innerHTML = '';
+                fileProcessItems.forEach((item) => {
+                    const statusClass =
+                        item.status === 'processed'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : item.status === 'processing'
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                : item.status === 'failed'
+                                    ? 'bg-red-50 text-red-700 border-red-200'
+                                    : 'bg-gray-50 text-gray-600 border-gray-200';
+                    const row = document.createElement('div');
+                    row.className = 'px-5 py-3 flex items-center justify-between gap-4';
+                    row.innerHTML = `
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium text-gray-800 truncate">${escapeHtml(item.name)}</p>
+                            <p class="text-xs text-gray-500 mt-0.5">Type: ${escapeHtml(item.type || 'file')}</p>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <span class="text-[11px] font-medium px-2 py-1 rounded-full border ${statusClass}">${escapeHtml(item.status)}</span>
+                            <button class="delete-processed-file-btn px-2.5 py-1.5 rounded-lg border border-red-200 text-xs font-medium text-red-700 hover:bg-red-50 transition-colors">
+                                Delete
+                            </button>
+                            <button class="open-processed-file-btn px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors" ${(item.blobUrl || item.filePath) ? '' : 'disabled'}>
+                                Open
+                            </button>
+                        </div>
+                    `;
+                    const deleteBtn = row.querySelector('.delete-processed-file-btn');
+                    const openBtn = row.querySelector('.open-processed-file-btn');
+                    if (deleteBtn) {
+                        deleteBtn.addEventListener('click', async () => {
+                            const ok = confirm(`Delete "${item.name}" from processed files?`);
+                            if (!ok) return;
+                            if (!activeUploadId) {
+                                alert('No active upload selected.');
+                                return;
+                            }
+                            const originalDeleteHtml = deleteBtn.innerHTML;
+                            deleteBtn.disabled = true;
+                            deleteBtn.classList.add('opacity-70', 'cursor-not-allowed');
+                            deleteBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Deleting...';
+                            try {
+                                const response = await fetch(`/uploads/${encodeURIComponent(activeUploadId)}/files`, {
+                                    method: 'DELETE',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ file_name: item.name }),
+                                });
+                                if (!response.ok) {
+                                    const err = await response.json().catch(() => ({}));
+                                    const detail = err && err.detail ? err.detail : `Delete failed (${response.status})`;
+                                    deleteBtn.disabled = false;
+                                    deleteBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+                                    deleteBtn.innerHTML = originalDeleteHtml;
+                                    alert(detail);
+                                    return;
+                                }
+                            } catch (_e) {
+                                deleteBtn.disabled = false;
+                                deleteBtn.classList.remove('opacity-70', 'cursor-not-allowed');
+                                deleteBtn.innerHTML = originalDeleteHtml;
+                                alert('Delete failed. Please try again.');
+                                return;
+                            }
+                            if (item.blobUrl) {
+                                try { URL.revokeObjectURL(item.blobUrl); } catch (_e) {}
+                            }
+                            fileProcessItems = fileProcessItems.filter((entry) => entry !== item);
+                            renderProcessedFiles();
+                        });
+                    }
+                    if (openBtn) {
+                        if (!item.blobUrl && !item.filePath) {
+                            openBtn.classList.add('opacity-40', 'cursor-not-allowed');
+                        } else {
+                            openBtn.addEventListener('click', () => {
+                                if (item.blobUrl) {
+                                    window.open(item.blobUrl, '_blank', 'noopener,noreferrer');
+                                    return;
+                                }
+                                if (activeUploadId && item.name) {
+                                    const url = `/uploads/${encodeURIComponent(activeUploadId)}/files/open?file_name=${encodeURIComponent(item.name)}`;
+                                    window.open(url, '_blank', 'noopener,noreferrer');
+                                }
+                            });
+                        }
+                    }
+                    processedFilesModalList.appendChild(row);
+                });
+            }
+
+            // Safety: if nothing is pending anymore, clear stale indexing state.
+            const hasPending = fileProcessItems.some((item) =>
+                item && (item.status === 'queued' || item.status === 'processing')
+            );
+            if (!hasPending && isIndexing) {
+                isIndexing = false;
+                setIndexState('ready');
+                setIndexProgress(100, `completed (${fileProcessItems.length}/${fileProcessItems.length})`);
+            }
+        }
+
+        function ensureThreadVisible() {
+            if (!chatThread || !heroHeading) return;
+            chatThread.classList.remove('hidden');
+            heroHeading.classList.add('hidden');
+        }
+
+        function activateConversationLayout() {
+            if (isConversationStarted) return;
+            isConversationStarted = true;
+            ensureThreadVisible();
+            if (composerShell && bottomComposerContainer) {
+                bottomComposerContainer.appendChild(composerShell);
+                composerShell.classList.remove('mb-8');
+                composerShell.classList.add('mb-0');
+            }
+            if (bottomComposerHost) bottomComposerHost.classList.remove('hidden');
+            if (fileProcessingCard) fileProcessingCard.classList.add('hidden');
+            if (mainContentStack) {
+                mainContentStack.classList.remove('justify-center');
+                mainContentStack.classList.add('pb-44');
+            }
+            if (footerDisclaimer) footerDisclaimer.classList.add('hidden');
+        }
+
+        function openProcessedFilesModal() {
+            if (!processedFilesModal) return;
+            openModalAnimated(processedFilesModal);
+        }
+
+        async function closeProcessedFilesModal() {
+            if (!processedFilesModal) return;
+            let hasPending = fileProcessItems.some((item) =>
+                item && (item.status === 'queued' || item.status === 'processing')
+            );
+            if (hasPending && activeUploadId) {
+                try {
+                    await syncProcessedFilesForActiveUpload();
+                } catch (_e) {}
+                hasPending = fileProcessItems.some((item) =>
+                    item && (item.status === 'queued' || item.status === 'processing')
+                );
+            }
+            if (isIndexing && hasPending) {
+                alert('Files are still processing. You cannot close this window yet.');
+                return;
+            }
+            await closeModalAnimated(processedFilesModal);
+        }
+
+        function setStreamingUi(streaming) {
+            isChatStreaming = streaming;
+            window.__isChatStreaming = streaming;
+            if (composerSendBtn) {
+                composerSendBtn.innerHTML = streaming
+                    ? '<i class="fa-solid fa-stop text-xs"></i>'
+                    : '<i class="fa-solid fa-paper-plane text-sm"></i>';
+                composerSendBtn.title = streaming ? 'Interrupt' : 'Send';
+            }
+            if (chatInput) chatInput.disabled = streaming;
+            if (window.__updateSendVisibility) window.__updateSendVisibility();
+        }
+
+        function closeAllRegenMenus() {
+            const menus = document.querySelectorAll('.regen-menu');
+            menus.forEach((menu) => menu.classList.add('hidden'));
+        }
+
+        function setSourcesPanelOpen(open) {
+            if (!sourcesPanel) return;
+            const nextOpen = Boolean(open);
+            if (isMobileDrawerMode() && nextOpen && isChatsSidebarOpen) {
+                setChatsSidebarOpen(false);
+            }
+            sourcesPanel.classList.toggle('panel-collapsed', !nextOpen);
+            setBackdropOpen(sourcesPanelBackdrop, nextOpen);
+            if (sourcesPanelToggleBtn) {
+                sourcesPanelToggleBtn.classList.toggle('bg-blue-100', nextOpen);
+                sourcesPanelToggleBtn.classList.toggle('text-blue-700', nextOpen);
+                sourcesPanelToggleBtn.classList.toggle('ring-2', nextOpen);
+                sourcesPanelToggleBtn.classList.toggle('ring-blue-200', nextOpen);
+            }
+        }
+
+        function setChatsSidebarOpen(open) {
+            if (!savedChatsSidebar) return;
+            const nextOpen = Boolean(open);
+            if (isMobileDrawerMode() && nextOpen && isSourcesPanelOpen()) {
+                setSourcesPanelOpen(false);
+            }
+            isChatsSidebarOpen = nextOpen;
+            savedChatsSidebar.classList.toggle('panel-collapsed', !isChatsSidebarOpen);
+            setBackdropOpen(chatsSidebarBackdrop, isChatsSidebarOpen);
+            if (chatsSidebarToggleBtn) {
+                chatsSidebarToggleBtn.classList.toggle('bg-blue-100', isChatsSidebarOpen);
+                chatsSidebarToggleBtn.classList.toggle('text-blue-700', isChatsSidebarOpen);
+                chatsSidebarToggleBtn.classList.toggle('ring-2', isChatsSidebarOpen);
+                chatsSidebarToggleBtn.classList.toggle('ring-blue-200', isChatsSidebarOpen);
+            }
+        }
+
+        function markdownToHtml(markdownText, responseId) {
+            const raw = (window.marked && typeof window.marked.parse === 'function')
+                ? window.marked.parse(markdownText || '')
+                : escapeHtml(markdownText || '').replace(/\n/g, '<br>');
+            return raw.replace(/\b(C\d+)\b/g, (_match, cid) =>
+                `<a href="#" data-citation-ref="${responseId}:${cid}" class="text-blue-600 font-semibold hover:underline">${cid}</a>`
+            );
+        }
+
+        function normalizeCitationId(value) {
+            const raw = String(value || '').trim();
+            if (!raw) return '';
+            const upper = raw.toUpperCase();
+            const digits = upper.match(/\d+/);
+            if (!digits) return upper;
+            return `C${digits[0]}`;
+        }
+
+        function formatBytes(bytes) {
+            if (bytes == null || Number.isNaN(Number(bytes))) return '-';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            let size = Number(bytes);
+            let idx = 0;
+            while (size >= 1024 && idx < units.length - 1) {
+                size /= 1024;
+                idx += 1;
+            }
+            return `${size.toFixed(size < 10 && idx > 0 ? 1 : 0)} ${units[idx]}`;
+        }
+
+        function clearSourcesPanel() {
+            citationMap = {};
+            responseCounter = 0;
+            if (sourcesResponseList) {
+                sourcesResponseList.innerHTML = '';
+                sourcesResponseList.classList.add('hidden');
+            }
+            if (sourcesEmptyState) sourcesEmptyState.classList.remove('hidden');
+            if (sourcePreviewBody) {
+                sourcePreviewBody.innerHTML = 'Select a citation like <span class="font-semibold text-blue-700">C1</span> to preview.';
+            }
+            if (sourcePreviewFile) sourcePreviewFile.textContent = 'File: -';
+            if (sourcePreviewSize) sourcePreviewSize.textContent = 'Size: -';
+            currentPreviewChunkId = null;
+            if (openSourceFileBtn) openSourceFileBtn.disabled = true;
+        }
+
+        function renderCitations(citations, responseId) {
+            if (!sourcesResponseList) return;
+            if (!Array.isArray(citations) || citations.length === 0) return;
+
+            if (sourcesEmptyState) sourcesEmptyState.classList.add('hidden');
+            sourcesResponseList.classList.remove('hidden');
+
+            const sectionId = `sources-${responseId}`;
+            const existing = sourcesResponseList.querySelector(`[data-sources-section="${sectionId}"]`);
+            if (existing) existing.remove();
+
+            const section = document.createElement('div');
+            section.setAttribute('data-sources-section', sectionId);
+            section.className = 'space-y-2';
+
+            const header = document.createElement('div');
+            header.className = 'text-[11px] text-slate-500 px-2 py-1 rounded-lg bg-white border border-blue-100 font-medium';
+            header.textContent = `Response ${String(responseId).replace(/^r/, '#')}`;
+            section.appendChild(header);
+
+            const groups = new Map();
+            citations.forEach((c) => {
+                const key = [
+                    c.chunk_id || '',
+                    c.file_path || '',
+                    c.anchor_type || '',
+                    c.anchor_page ?? '',
+                    c.anchor_paragraph ?? '',
+                    c.anchor_row ?? '',
+                    String(c.quoted_snippet || '').trim().toLowerCase(),
+                ].join('|');
+                if (!groups.has(key)) {
+                    groups.set(key, { ...c, citation_ids: [c.citation_id] });
+                } else {
+                    groups.get(key).citation_ids.push(c.citation_id);
+                }
+                const group = groups.get(key);
+                const variants = new Set();
+                const rawId = String(c.citation_id || '').trim();
+                const normalized = normalizeCitationId(rawId);
+                if (rawId) variants.add(rawId);
+                if (normalized) variants.add(normalized);
+                if (normalized) variants.add(normalized.toLowerCase());
+                const digits = normalized.replace(/^C/i, '');
+                if (digits) variants.add(digits);
+                variants.forEach((variant) => {
+                    citationMap[`${responseId}:${variant}`] = group;
+                });
+            });
+
+            Array.from(groups.values()).forEach((c) => {
+                const primaryId = `${responseId}:${(c.citation_ids && c.citation_ids[0]) || c.citation_id || ''}`;
+                const row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'w-full text-left rounded-2xl border border-blue-100 bg-white/95 p-3.5 shadow-sm hover:shadow-md hover:border-blue-200 hover:-translate-y-[1px] transition-all';
+                row.setAttribute('data-citation-id', primaryId);
+                row.innerHTML = `
+                    <div class="flex items-center justify-between gap-3">
+                        <div class="min-w-0 flex items-start gap-2.5">
+                            <span class="mt-0.5 w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                                <i class="fa-regular fa-file-lines text-[11px]"></i>
+                            </span>
+                            <div class="min-w-0">
+                                <p class="text-sm font-semibold text-slate-800 truncate">${escapeHtml((c.file_path || '').split(/[\\\\/]/).pop() || 'source')}</p>
+                                <p class="text-[11px] text-slate-500 truncate">${escapeHtml(c.anchor_type || '')} ${c.anchor_page ? (`page ${c.anchor_page}`) : ''} ${c.anchor_row ? (`row ${c.anchor_row}`) : ''}</p>
+                            </div>
+                        </div>
+                        <span class="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-1 rounded-full shrink-0">${escapeHtml((c.citation_ids || [c.citation_id || '']).join(', '))}</span>
+                    </div>
+                `;
+                row.addEventListener('click', async () => {
+                    await activateCitation(primaryId);
+                });
+                section.appendChild(row);
+            });
+
+            sourcesResponseList.prepend(section);
+        }
+
+        async function openChunk(chunkId) {
+            if (!chunkId) return;
+            try {
+                const response = await fetch(`/chunks/${encodeURIComponent(chunkId)}`);
+                if (!response.ok) return;
+                const chunk = await response.json();
+                currentPreviewChunkId = chunk.id || chunkId;
+                if (sourcePreviewBody) {
+                    sourcePreviewBody.innerHTML = `
+                        <div class="source-preview-card">
+                            <p class="source-preview-title">${escapeHtml(chunk.file_name || 'Chunk')}</p>
+                            <p class="source-preview-meta">${escapeHtml(chunk.anchor_type || '')} ${chunk.anchor_page ? (`page ${chunk.anchor_page}`) : ''} ${chunk.anchor_row ? (`row ${chunk.anchor_row}`) : ''}</p>
+                            <div class="source-preview-text">${escapeHtml(chunk.text || '')}</div>
+                        </div>
+                    `;
+                }
+                if (sourcePreviewFile) {
+                    sourcePreviewFile.textContent = `File: ${chunk.file_path || '-'}`;
+                }
+                if (sourcePreviewSize) {
+                    sourcePreviewSize.textContent = `Size: ${formatBytes(chunk.file_size_bytes)}`;
+                }
+                if (openSourceFileBtn) {
+                    openSourceFileBtn.disabled = !currentPreviewChunkId;
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        async function activateCitation(citationRef) {
+            const [refPrefixRaw, rawIdRaw] = String(citationRef || '').split(':');
+            const refPrefix = refPrefixRaw || 'r0';
+            const rawId = rawIdRaw || '';
+            let citation = citationMap[`${refPrefix}:${rawId}`];
+            if (!citation) citation = citationMap[`${refPrefix}:${normalizeCitationId(rawId)}`];
+            if (!citation) citation = citationMap[`${refPrefix}:${normalizeCitationId(rawId).toLowerCase()}`];
+            if (!citation) citation = citationMap[`${refPrefix}:${String(rawId).replace(/^C/i, '')}`];
+            if (!citation || !sourcesResponseList) return;
+            const primaryId = `${refPrefix}:${(citation.citation_ids && citation.citation_ids[0]) || citation.citation_id || ''}`;
+            const cards = sourcesResponseList.querySelectorAll('[data-citation-id]');
+            cards.forEach((card) => {
+                card.classList.remove('ring-2', 'ring-blue-400', 'border-blue-400', 'bg-blue-50/30');
+            });
+            const activeCard = sourcesResponseList.querySelector(`[data-citation-id="${primaryId}"]`);
+            if (activeCard) {
+                activeCard.classList.add('ring-2', 'ring-blue-400', 'border-blue-400', 'bg-blue-50/30');
+                activeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+            setSourcesPanelOpen(true);
+            await openChunk(citation.chunk_id);
+        }
+
+        function mountUserMessageDisplay(row) {
+            const text = row.dataset.userText || '';
+            row.innerHTML = `
+                <div class="max-w-[82%]">
+                    <div class="bg-purple-100 text-gray-900 rounded-2xl rounded-tr-sm px-4 py-2.5">
+                        <p class="text-base leading-relaxed whitespace-pre-wrap user-message-text"></p>
+                    </div>
+                    <div class="mt-1 flex justify-end">
+                        <button class="edit-user-msg text-xs text-gray-400 hover:text-gray-700 px-1.5 py-1 rounded hover:bg-gray-100 transition-colors" title="Edit message">
+                            <i class="fa-regular fa-pen-to-square"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+            const textEl = row.querySelector('.user-message-text');
+            if (textEl) textEl.textContent = text;
+            const editBtn = row.querySelector('.edit-user-msg');
+            if (editBtn) {
+                editBtn.addEventListener('click', () => {
+                    mountUserMessageEditor(row);
+                });
+            }
+        }
+
+        function autoResizeInlineEditor(textareaEl) {
+            if (!textareaEl) return;
+            textareaEl.style.height = 'auto';
+            const nextHeight = Math.min(textareaEl.scrollHeight, 180);
+            textareaEl.style.height = `${nextHeight}px`;
+            textareaEl.style.overflowY = textareaEl.scrollHeight > 180 ? 'auto' : 'hidden';
+        }
+
+        function mountUserMessageEditor(row) {
+            if (!row) return;
+            if (editingUserMessageEl && editingUserMessageEl !== row) {
+                mountUserMessageDisplay(editingUserMessageEl);
+            }
+            editingUserMessageEl = row;
+            const text = row.dataset.userText || '';
+            row.innerHTML = `
+                <div class="w-full max-w-[85%] rounded-[30px] bg-gray-100 px-5 py-4 border border-gray-200">
+                    <textarea class="edit-user-inline w-full bg-transparent border-none resize-none focus:ring-0 text-base leading-7 text-gray-900 min-h-[56px] max-h-[180px]" rows="1"></textarea>
+                    <div class="mt-4 flex items-center justify-end gap-3">
+                        <button type="button" class="edit-cancel-btn px-5 py-2 rounded-full border border-gray-300 bg-white text-gray-800 text-sm font-semibold hover:bg-gray-50 transition-colors">Cancel</button>
+                        <button type="button" class="edit-send-btn px-5 py-2 rounded-full bg-black text-white text-sm font-semibold hover:bg-gray-900 transition-colors">Send</button>
+                    </div>
+                </div>
+            `;
+            const inlineInput = row.querySelector('.edit-user-inline');
+            const cancelBtn = row.querySelector('.edit-cancel-btn');
+            const sendBtn = row.querySelector('.edit-send-btn');
+            if (!inlineInput || !cancelBtn || !sendBtn) return;
+
+            inlineInput.value = text;
+            inlineInput.focus();
+            inlineInput.selectionStart = inlineInput.value.length;
+            inlineInput.selectionEnd = inlineInput.value.length;
+            autoResizeInlineEditor(inlineInput);
+
+            inlineInput.addEventListener('input', () => autoResizeInlineEditor(inlineInput));
+            inlineInput.addEventListener('keydown', async (event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    const nextMessage = (inlineInput.value || '').trim();
+                    if (!nextMessage || isChatStreaming) return;
+                    await sendChatMessage(nextMessage);
+                } else if (event.key === 'Escape') {
+                    event.preventDefault();
+                    editingUserMessageEl = null;
+                    mountUserMessageDisplay(row);
+                } else if (event.key === 'Enter' && event.shiftKey) {
+                    setTimeout(() => autoResizeInlineEditor(inlineInput), 0);
+                }
+            });
+
+            cancelBtn.addEventListener('click', () => {
+                editingUserMessageEl = null;
+                mountUserMessageDisplay(row);
+            });
+            sendBtn.addEventListener('click', async () => {
+                const nextMessage = (inlineInput.value || '').trim();
+                if (!nextMessage || isChatStreaming) return;
+                await sendChatMessage(nextMessage);
+            });
+        }
+
+        function createUserMessageRow(message, messageId = '') {
+            const row = document.createElement('div');
+            row.className = 'user-message flex justify-end';
+            row.dataset.userText = message;
+            row.dataset.messageId = messageId || '';
+            mountUserMessageDisplay(row);
+            return row;
+        }
+
+        function createAssistantMessageRow(messageId = '') {
+            const row = document.createElement('div');
+            row.className = 'assistant-message';
+            row.dataset.messageId = messageId || '';
+            row.innerHTML = `
+                <div class="assistant-stream-status hidden mb-2 text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-2 py-1.5">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="assistant-stream-status-summary text-[11px] font-medium"></div>
+                        <button type="button" class="assistant-stream-status-toggle text-[10px] px-1.5 py-0.5 rounded border border-blue-200 bg-white/80 hover:bg-white transition-colors">
+                            Details
+                        </button>
+                    </div>
+                    <div class="assistant-stream-status-details hidden mt-1.5 space-y-1 text-[10px] leading-4"></div>
+                </div>
+                <div class="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3">
+                    <div class="assistant-message-text markdown-body text-gray-800 leading-relaxed"></div>
+                </div>
+                <div class="mt-2 flex items-center gap-2 text-xs text-gray-500">
+                    <button class="assistant-copy px-2 py-1 rounded hover:bg-gray-100 transition-colors" title="Copy response">
+                        <i class="fa-regular fa-copy mr-1"></i>Copy
+                    </button>
+                    <div class="relative">
+                        <button class="assistant-regen-toggle px-2 py-1 rounded hover:bg-gray-100 transition-colors" title="Regenerate response">
+                            <i class="fa-solid fa-rotate-right mr-1"></i>Regenerate
+                        </button>
+                        <div class="regen-menu hidden absolute left-0 top-full mt-1 w-44 rounded-xl border border-gray-200 bg-white shadow-lg z-20">
+                            <button data-regen="try_again" class="w-full text-left px-3 py-2 text-sm hover:bg-gray-50">Try again</button>
+                            <button data-regen="add_details" class="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-t border-gray-100">Add details</button>
+                            <button data-regen="more_concise" class="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-t border-gray-100">More concise</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            return row;
+        }
+
+        function removeRowAndFollowing(row) {
+            let cursor = row;
+            while (cursor) {
+                const next = cursor.nextElementSibling;
+                cursor.remove();
+                cursor = next;
+            }
+        }
+
+        async function truncateChatFromMessage(messageId) {
+            if (!activeChatId || !messageId) return;
+            const response = await fetch(`/chats/${encodeURIComponent(activeChatId)}/messages/${encodeURIComponent(messageId)}/from_here`, {
+                method: 'DELETE',
+            });
+            if (!response.ok) {
+                let detail = '';
+                try {
+                    const err = await response.json();
+                    detail = err && err.detail ? String(err.detail) : '';
+                } catch (_e) {}
+                throw new Error(detail || `Failed to truncate chat: ${response.status}`);
+            }
+        }
+
+        function buildRegeneratePrompt(message, regenType) {
+            if (regenType === 'add_details') {
+                return `${message}\n\nPlease add more detail, concrete examples, and actionable steps.`;
+            }
+            if (regenType === 'more_concise') {
+                return `${message}\n\nPlease answer more concisely in fewer words.`;
+            }
+            return message;
+        }
+
+        function bindAssistantRegenerateHandlers(assistantRow) {
+            if (!assistantRow) return;
+            const regenToggle = assistantRow.querySelector('.assistant-regen-toggle');
+            const regenMenu = assistantRow.querySelector('.regen-menu');
+            if (!regenToggle || !regenMenu) return;
+
+            regenToggle.onclick = (event) => {
+                event.stopPropagation();
+                const isHidden = regenMenu.classList.contains('hidden');
+                closeAllRegenMenus();
+                regenMenu.classList.toggle('hidden', !isHidden);
+            };
+
+            regenMenu.querySelectorAll('[data-regen]').forEach((button) => {
+                button.onclick = async (event) => {
+                    event.stopPropagation();
+                    regenMenu.classList.add('hidden');
+                    if (isChatStreaming) return;
+                    const baseMessage = assistantRow.dataset.baseMessage || '';
+                    if (!baseMessage.trim()) return;
+                    const userMessage = buildRegeneratePrompt(baseMessage, button.dataset.regen || 'try_again');
+                    const replacement = createAssistantMessageRow();
+                    replacement.dataset.baseMessage = baseMessage;
+                    assistantRow.replaceWith(replacement);
+                    const regenResponseId = `r${++responseCounter}`;
+                    await streamIntoAssistant(replacement, userMessage, regenResponseId);
+                };
+            });
+        }
+
+        function renderMarkdown(targetEl, markdownText) {
+            if (!targetEl) return;
+            const text = markdownText || '';
+            if (window.marked && typeof window.marked.parse === 'function') {
+                targetEl.innerHTML = window.marked.parse(text);
+            } else {
+                targetEl.innerHTML = escapeHtml(text).replace(/\n/g, '<br>');
+            }
+        }
+
+        async function streamIntoAssistant(assistantRow, message, responseId) {
+            if (!assistantRow) return;
+            const textEl = assistantRow.querySelector('.assistant-message-text');
+            const statusEl = assistantRow.querySelector('.assistant-stream-status');
+            const statusSummaryEl = assistantRow.querySelector('.assistant-stream-status-summary');
+            const statusDetailsEl = assistantRow.querySelector('.assistant-stream-status-details');
+            const statusToggleEl = assistantRow.querySelector('.assistant-stream-status-toggle');
+            const copyBtn = assistantRow.querySelector('.assistant-copy');
+            const regenToggle = assistantRow.querySelector('.assistant-regen-toggle');
+            const regenMenu = assistantRow.querySelector('.regen-menu');
+            let statusOpen = false;
+
+            if (statusToggleEl && statusDetailsEl) {
+                statusToggleEl.addEventListener('click', () => {
+                    statusOpen = !statusOpen;
+                    statusDetailsEl.classList.toggle('hidden', !statusOpen);
+                    statusToggleEl.textContent = statusOpen ? 'Hide' : 'Details';
+                });
+            }
+
+            if (copyBtn) copyBtn.disabled = true;
+            if (regenToggle) regenToggle.disabled = true;
+            assistantRow.dataset.baseMessage = message;
+            if (textEl) textEl.innerHTML = markdownToHtml('', responseId);
+
+            setStreamingUi(true);
+            currentStreamAbortController = new AbortController();
+            let answer = '';
+            let latestCitations = [];
+            try {
+                const response = await fetch('/chat/stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message,
+                        mode: (chatModeInput && chatModeInput.value) || 'accurate',
+                        upload_id: activeUploadId,
+                        chat_id: activeChatId || null,
+                    }),
+                    signal: currentStreamAbortController.signal,
+                });
+                if (!response.ok || !response.body) {
+                    throw new Error(`Streaming failed: ${response.status}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const blocks = buffer.split('\n\n');
+                    buffer = blocks.pop() || '';
+                    for (const block of blocks) {
+                        const lines = block.split('\n').filter(Boolean);
+                        let eventName = 'message';
+                        let data = '';
+                        for (const line of lines) {
+                            if (line.startsWith('event:')) eventName = line.slice(6).trim();
+                            if (line.startsWith('data:')) data += line.slice(5).trim();
+                        }
+                        if (!data) continue;
+                        let payload;
+                        try {
+                            payload = JSON.parse(data);
+                        } catch {
+                            continue;
+                        }
+                        if (eventName === 'token') {
+                            answer += payload.delta || '';
+                            if (textEl) textEl.innerHTML = markdownToHtml(answer, responseId);
+                        } else if (eventName === 'status') {
+                            if (statusEl && statusSummaryEl) {
+                                const plannerKey = String(payload.planner || '').toLowerCase();
+                                let planner = 'Fast';
+                                if (plannerKey === 'accurate_deterministic') planner = 'Accurate';
+                                else if (plannerKey === 'moderate_deterministic') planner = 'Moderate';
+                                else if (plannerKey === 'react' || plannerKey === 'react_graph') planner = 'ReAct';
+                                const queries = Array.isArray(payload.queries) ? payload.queries.length : 0;
+                                const hits = Number(payload.hits || 0);
+                                statusSummaryEl.textContent = `${planner} retrieval: ${queries} query probe(s), ${hits} hit(s)`;
+                                statusEl.classList.remove('hidden');
+                            }
+                        } else if (eventName === 'status_detail') {
+                            if (statusEl && statusDetailsEl) {
+                                const line = String(payload.line || '').trim();
+                                if (line) {
+                                    const item = document.createElement('div');
+                                    item.className = 'text-blue-800/90';
+                                    item.textContent = `- ${line}`;
+                                    statusDetailsEl.appendChild(item);
+                                    statusEl.classList.remove('hidden');
+                                }
+                            }
+                        } else if (eventName === 'done') {
+                            answer = payload.answer_markdown || answer;
+                            assistantRow.dataset.answerRaw = answer || '';
+                            latestCitations = Array.isArray(payload.citations) ? payload.citations : [];
+                            if (textEl) textEl.innerHTML = markdownToHtml(answer, responseId);
+                            renderCitations(latestCitations, responseId);
+                        } else if (eventName === 'error') {
+                            renderMarkdown(textEl, payload.error || 'Streaming error');
+                        }
+                    }
+                }
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    if (textEl) textEl.innerHTML = markdownToHtml(`${answer}\n\n[Interrupted]`, responseId);
+                } else {
+                    renderMarkdown(textEl, 'Failed to stream response.');
+                    console.error(error);
+                }
+            } finally {
+                currentStreamAbortController = null;
+                setStreamingUi(false);
+                if (copyBtn) copyBtn.disabled = false;
+                if (regenToggle) regenToggle.disabled = false;
+            }
+
+            if (copyBtn) {
+                copyBtn.onclick = async () => {
+                    const raw = assistantRow.dataset.answerRaw || answer || (textEl ? textEl.textContent : '');
+                    await copyAssistantText(copyBtn, raw);
+                };
+            }
+            bindAssistantRegenerateHandlers(assistantRow);
+
+            return { answer, citations: latestCitations };
+        }
+
+        async function sendChatMessage(message) {
+            if (!chatThread || !chatInput || isChatStreaming) return;
+            if (isIndexing) {
+                alert('Files are still processing. Please wait until processing is complete.');
+                return;
+            }
+            if (!(await ensureUploadReadyForChat())) {
+                return;
+            }
+
+            activateConversationLayout();
+            closeAllRegenMenus();
+            await ensureChatSession();
+
+            let userRow = editingUserMessageEl;
+            if (userRow) {
+                const editedMessageId = userRow.dataset.messageId || '';
+                if (editedMessageId) {
+                    await truncateChatFromMessage(editedMessageId);
+                }
+                removeRowAndFollowing(userRow);
+                editingUserMessageEl = null;
+                userRow = createUserMessageRow(message);
+                chatThread.appendChild(userRow);
+            } else {
+                userRow = createUserMessageRow(message);
+                chatThread.appendChild(userRow);
+            }
+
+            const assistantRow = createAssistantMessageRow();
+            const responseId = `r${++responseCounter}`;
+            assistantRow.dataset.responseId = responseId;
+            if (userRow.nextSibling) {
+                userRow.parentNode.insertBefore(assistantRow, userRow.nextSibling);
+            } else {
+                chatThread.appendChild(assistantRow);
+            }
+
+            chatInput.value = '';
+            if (window.__resizeComposer) window.__resizeComposer();
+            try {
+                const savedUser = await saveMessage('user', message, []);
+                if (savedUser && savedUser.id) {
+                    userRow.dataset.messageId = savedUser.id;
+                }
+                const result = await streamIntoAssistant(assistantRow, message, responseId);
+                const savedAssistant = await saveMessage('assistant', result.answer || '', Array.isArray(result.citations) ? result.citations : []);
+                if (savedAssistant && savedAssistant.id) {
+                    assistantRow.dataset.messageId = savedAssistant.id;
+                }
+                await autoTitleActiveChat();
+                await loadSavedChats();
+                assistantRow.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            } catch (error) {
+                console.error(error);
+                alert(error?.message || 'Send failed. Please try again.');
+            }
+        }
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        async function copyAssistantText(copyBtn, rawText) {
+            const raw = String(rawText || '').trim();
+            if (!raw || !copyBtn) return;
+            const originalHtml = '<i class="fa-regular fa-copy mr-1"></i>Copy';
+            let copied = false;
+
+            try {
+                await navigator.clipboard.writeText(raw);
+                copied = true;
+            } catch (_err) {
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = raw;
+                    ta.setAttribute('readonly', '');
+                    ta.style.position = 'absolute';
+                    ta.style.left = '-9999px';
+                    document.body.appendChild(ta);
+                    ta.focus();
+                    ta.select();
+                    copied = document.execCommand('copy');
+                    document.body.removeChild(ta);
+                } catch (_err2) {
+                    copied = false;
+                }
+            }
+
+            if (!copied) return;
+            copyBtn.innerHTML = '<i class="fa-solid fa-check mr-1"></i>Copied';
+            if (copyBtn._copiedTimer) clearTimeout(copyBtn._copiedTimer);
+            copyBtn._copiedTimer = setTimeout(() => {
+                copyBtn.innerHTML = originalHtml;
+                copyBtn._copiedTimer = null;
+            }, 3000);
+        }
+
+        function resetConversationView() {
+            chatThread.innerHTML = '';
+            chatThread.classList.add('hidden');
+            heroHeading.classList.remove('hidden');
+            isConversationStarted = false;
+            editingUserMessageEl = null;
+
+            if (bottomComposerHost) bottomComposerHost.classList.add('hidden');
+            if (composerShell && mainContentStack) {
+                mainContentStack.insertBefore(composerShell, fileProcessingCard);
+                composerShell.classList.remove('mb-0');
+                composerShell.classList.add('mb-8');
+            }
+            if (fileProcessingCard) fileProcessingCard.classList.remove('hidden');
+            if (mainContentStack) {
+                mainContentStack.classList.add('justify-center');
+                mainContentStack.classList.remove('pb-44');
+            }
+            if (footerDisclaimer) footerDisclaimer.classList.remove('hidden');
+
+            clearSourcesPanel();
+        }
+
+        function scrollChatToBottom(smooth = false) {
+            const behavior = smooth ? 'smooth' : 'auto';
+            if (chatMainColumn) {
+                chatMainColumn.scrollTo({ top: chatMainColumn.scrollHeight, behavior });
+            }
+            if (chatThread) {
+                chatThread.scrollTo({ top: chatThread.scrollHeight, behavior });
+                const last = chatThread.lastElementChild;
+                if (last && typeof last.scrollIntoView === 'function') {
+                    last.scrollIntoView({ block: 'end', behavior });
+                }
+            }
+            ensureLastMessageFullyVisible();
+        }
+
+        function getBottomReservedSpace() {
+            if (!bottomComposerHost || bottomComposerHost.classList.contains('hidden')) return 0;
+            return bottomComposerHost.offsetHeight + 16;
+        }
+
+        function ensureLastMessageFullyVisible() {
+            if (!chatMainColumn || !chatThread) return;
+            const last = chatThread.lastElementChild;
+            if (!last) return;
+            const containerRect = chatMainColumn.getBoundingClientRect();
+            const lastRect = last.getBoundingClientRect();
+            const visibleBottom = containerRect.bottom - getBottomReservedSpace();
+            const overflow = lastRect.bottom - visibleBottom;
+            if (overflow > 0) {
+                chatMainColumn.scrollTop += overflow + 12;
+            }
+        }
+
+        function ensureScrollToBottomAfterRender() {
+            const delays = [0, 80, 220, 420, 700];
+            delays.forEach((delay) => {
+                setTimeout(() => scrollChatToBottom(false), delay);
+            });
+        }
+
+        async function ensureChatSession() {
+            if (activeChatId) return activeChatId;
+            const response = await fetch('/chats', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: 'New Chat', upload_id: activeUploadId }),
+            });
+            if (!response.ok) throw new Error(`Failed to create chat session: ${response.status}`);
+            const chat = await response.json();
+            activeChatId = chat.id;
+            activeUploadId = chat.upload_id || activeUploadId;
+            shouldAutoTitle = true;
+            await loadSavedChats();
+            return activeChatId;
+        }
+
+        async function saveMessage(role, content, citations = []) {
+            const chatId = await ensureChatSession();
+            const response = await fetch(`/chats/${encodeURIComponent(chatId)}/messages`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ role, content, citations }),
+            });
+            if (!response.ok) {
+                let detail = '';
+                try {
+                    const err = await response.json();
+                    detail = err && err.detail ? String(err.detail) : '';
+                } catch (_e) {}
+                throw new Error(detail || `Failed to save message: ${response.status}`);
+            }
+            return response.json();
+        }
+
+        async function ensureUploadReadyForChat() {
+            const selectedMode = (chatModeInput && chatModeInput.value) || 'accurate';
+            if (selectedMode === 'general') {
+                return true;
+            }
+            if (!activeUploadId) {
+                alert('Please add files and wait until processing is ready.');
+                return false;
+            }
+            try {
+                const response = await fetch(`/uploads/${encodeURIComponent(activeUploadId)}/status`);
+                if (!response.ok) {
+                    alert('Could not verify upload status. Please try again.');
+                    return false;
+                }
+                const status = await response.json();
+                if (!status.has_indexed_content) {
+                    alert('Files are missing or deleted. Please upload files again.');
+                    return false;
+                }
+                return true;
+            } catch (_e) {
+                alert('Could not verify upload status. Please try again.');
+                return false;
+            }
+        }
+
+        async function autoTitleActiveChat() {
+            if (!activeChatId || !shouldAutoTitle) return;
+            const response = await fetch(`/chats/${encodeURIComponent(activeChatId)}/auto_title`, { method: 'POST' });
+            if (!response.ok) return;
+            shouldAutoTitle = false;
+            await loadSavedChats();
+        }
+
+        async function loadChatConversation(chatId) {
+            const response = await fetch(`/chats/${encodeURIComponent(chatId)}/messages`);
+            if (!response.ok) return;
+            const messages = await response.json();
+
+            resetConversationView();
+            citationMap = {};
+            responseCounter = 0;
+
+            if (!Array.isArray(messages) || messages.length === 0) {
+                return;
+            }
+
+            activateConversationLayout();
+            let lastUserMessage = '';
+            for (const msg of messages) {
+                if (msg.role === 'user') {
+                    lastUserMessage = msg.content || '';
+                    chatThread.appendChild(createUserMessageRow(msg.content || '', msg.id || ''));
+                } else {
+                    const assistantRow = createAssistantMessageRow(msg.id || '');
+                    const responseId = `r${++responseCounter}`;
+                    assistantRow.dataset.responseId = responseId;
+                    assistantRow.dataset.answerRaw = msg.content || '';
+                    assistantRow.dataset.baseMessage = lastUserMessage || '';
+                    const bodyEl = assistantRow.querySelector('.assistant-message-text');
+                    if (bodyEl) bodyEl.innerHTML = markdownToHtml(msg.content || '', responseId);
+                    const copyBtn = assistantRow.querySelector('.assistant-copy');
+                    if (copyBtn) {
+                        copyBtn.onclick = async () => {
+                            const raw = assistantRow.dataset.answerRaw || msg.content || (bodyEl ? bodyEl.textContent : '');
+                            await copyAssistantText(copyBtn, raw);
+                        };
+                    }
+                    bindAssistantRegenerateHandlers(assistantRow);
+                    chatThread.appendChild(assistantRow);
+                    renderCitations(Array.isArray(msg.citations) ? msg.citations : [], responseId);
+                }
+            }
+            requestAnimationFrame(() => ensureScrollToBottomAfterRender());
+        }
+
+        async function openChat(chatId) {
+            const chat = allChats.find((item) => item.id === chatId);
+            activeChatId = chatId;
+            activeUploadId = chat && chat.upload_id ? chat.upload_id : null;
+            shouldAutoTitle = false;
+            await syncProcessedFilesForActiveUpload();
+            await loadChatConversation(chatId);
+            renderSavedChats();
+        }
+
+        async function syncProcessedFilesForActiveUpload() {
+            if (!activeUploadId) {
+                fileProcessItems = [];
+                isIndexing = false;
+                renderProcessedFiles();
+                return;
+            }
+            try {
+                const response = await fetch(`/uploads/${encodeURIComponent(activeUploadId)}/files`);
+                if (!response.ok) {
+                    fileProcessItems = [];
+                    isIndexing = false;
+                    renderProcessedFiles();
+                    return;
+                }
+                const payload = await response.json();
+                const files = Array.isArray(payload.files) ? payload.files : [];
+                fileProcessItems = files.map((file) => ({
+                    name: file.name,
+                    status: file.status || 'processed',
+                    type: file.type || 'file',
+                    chunkCount: Number(file.chunk_count || 0),
+                    filePath: file.file_path || '',
+                    fileSizeBytes: file.file_size_bytes ?? null,
+                    blobUrl: null,
+                }));
+                const hasPending = fileProcessItems.some((item) =>
+                    item && (item.status === 'queued' || item.status === 'processing')
+                );
+                isIndexing = hasPending;
+                if (!hasPending && fileProcessItems.length > 0) {
+                    setIndexState('ready');
+                    setIndexProgress(100, `completed (${fileProcessItems.length}/${fileProcessItems.length})`);
+                }
+                renderProcessedFiles();
+            } catch (_e) {
+                fileProcessItems = [];
+                isIndexing = false;
+                renderProcessedFiles();
+            }
+        }
+
+        async function pollIndexStatus(jobId, batchStart, batchSize) {
+            let baseProcessedOffset = null;
+            let lastStatusKey = '';
+            let stagnantPolls = 0;
+            let pollAttempts = 0;
+            const pollIntervalMs = 9999;
+            const maxPollSeconds = 2 * 60 * 60; // allow up to 60 minutes for very large files
+            const maxPollAttempts = Math.ceil((maxPollSeconds * 1000) / pollIntervalMs);
+            while (true) {
+                pollAttempts += 1;
+                const response = await fetch(`/index/status?job_id=${encodeURIComponent(jobId)}`);
+                if (!response.ok) {
+                    throw new Error(`Failed status poll: ${response.status}`);
+                }
+                const status = await response.json();
+
+                if (baseProcessedOffset === null) {
+                    const total = Number(status.files_total) || 0;
+                    baseProcessedOffset = Math.max(0, total - batchSize);
+                }
+                const absoluteProcessed = Number(status.files_processed) || 0;
+                const relativeProcessed = Math.max(0, absoluteProcessed - (baseProcessedOffset || 0));
+
+                for (let i = 0; i < batchSize; i += 1) {
+                    const idx = batchStart + i;
+                    if (!fileProcessItems[idx]) continue;
+                    if (fileProcessItems[idx].status === 'failed') continue;
+                    if (status.status === 'failed') {
+                        if (i >= relativeProcessed) fileProcessItems[idx].status = 'failed';
+                    } else if (status.status === 'completed') {
+                        fileProcessItems[idx].status = 'processed';
+                    } else if (i < relativeProcessed) {
+                        fileProcessItems[idx].status = 'processed';
+                    } else if (i === relativeProcessed) {
+                        fileProcessItems[idx].status = 'processing';
+                    } else if (fileProcessItems[idx].status !== 'processed') {
+                        fileProcessItems[idx].status = 'queued';
+                    }
+                }
+                renderProcessedFiles();
+
+                const totalItems = fileProcessItems.length;
+                const processedItems = fileProcessItems.filter((item) => item && item.status === 'processed').length;
+                const hasPendingLocal = fileProcessItems.some((item) =>
+                    item && (item.status === 'queued' || item.status === 'processing')
+                );
+                const progressPct = totalItems > 0
+                    ? Math.round((processedItems / totalItems) * 1000) / 10
+                    : (status.progress || 0);
+                setIndexProgress(progressPct, `${status.status} (${processedItems}/${totalItems || 0})`);
+
+                if (status.status === 'completed') {
+                    if (hasPendingLocal) {
+                        setIndexState('indexing');
+                    } else {
+                        setIndexState('ready');
+                        setIndexProgress(100, `completed (${processedItems}/${totalItems || processedItems})`);
+                    }
+                    break;
+                }
+                if (status.status === 'failed') {
+                    setIndexState('failed');
+                    break;
+                }
+                if ((Number(status.files_total) || 0) > 0 && absoluteProcessed >= (Number(status.files_total) || 0)) {
+                    if (hasPendingLocal) {
+                        setIndexState('indexing');
+                    } else {
+                        setIndexState('ready');
+                        setIndexProgress(100, `completed (${processedItems}/${totalItems || processedItems})`);
+                    }
+                    break;
+                }
+
+                const statusKey = `${status.status}|${status.progress}|${status.files_processed}|${status.files_total}|${status.chunks_indexed}`;
+                if (statusKey === lastStatusKey) {
+                    stagnantPolls += 1;
+                } else {
+                    stagnantPolls = 0;
+                    lastStatusKey = statusKey;
+                }
+                if (stagnantPolls >= 25 && (Number(status.files_total) || 0) > 0 && absoluteProcessed >= (Number(status.files_total) || 0)) {
+                    if (hasPendingLocal) {
+                        setIndexState('indexing');
+                    } else {
+                        setIndexState('ready');
+                        setIndexProgress(100, `completed (${processedItems}/${totalItems || processedItems})`);
+                    }
+                    break;
+                }
+                // Long-running indexing (especially with large files/AI summarization) may appear stagnant.
+                // Do not hard-fail here; keep polling and occasionally re-sync from backend source of truth.
+                if (stagnantPolls >= 90) {
+                    stagnantPolls = 0;
+                    if (activeUploadId) {
+                        try {
+                            await syncProcessedFilesForActiveUpload();
+                            const hasPending = fileProcessItems.some((item) =>
+                                item && (item.status === 'queued' || item.status === 'processing')
+                            );
+                            if (!hasPending && fileProcessItems.length > 0) {
+                                setIndexState('ready');
+                                setIndexProgress(100, `completed (${fileProcessItems.length}/${fileProcessItems.length})`);
+                                break;
+                            }
+                        } catch (_e) {
+                            // Keep polling even if this re-sync fails.
+                        }
+                    }
+                }
+                if (pollAttempts >= maxPollAttempts) {
+                    throw new Error('Index status timed out after 60 minutes. Backend may still be running.');
+                }
+                await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+            }
+        }
+
+        async function uploadAndIndex(files) {
+            if (!files.length || isIndexing) return;
+            isIndexing = true;
+            setIndexState('indexing');
+            setIndexProgress(0, 'Indexing');
+            const batchStart = fileProcessItems.length;
+
+            files.forEach((file) =>
+                fileProcessItems.push({
+                    name: file.name,
+                    status: 'queued',
+                    type: file.type || 'file',
+                    blobUrl: URL.createObjectURL(file),
+                })
+            );
+            renderProcessedFiles();
+
+            let failedCount = 0;
+            let uploadedCount = 0;
+            for (let i = 0; i < files.length; i += 1) {
+                const file = files[i];
+                const idx = batchStart + i;
+                try {
+                    if (fileProcessItems[idx]) {
+                        fileProcessItems[idx].status = 'processing';
+                    }
+                    setIndexProgress(0, `uploading ${i + 1}/${files.length}: ${file.name}`);
+                    renderProcessedFiles();
+
+                    const form = new FormData();
+                    form.append('files', file, file.name);
+                    form.append('paths', file.name);
+                    form.append('start_indexing', 'false');
+                    if (activeUploadId) {
+                        form.append('upload_id', activeUploadId);
+                    }
+
+                    const response = await fetch('/index/upload', {
+                        method: 'POST',
+                        body: form,
+                    });
+                    if (!response.ok) {
+                        throw new Error(`Upload failed for ${file.name}: ${response.status}`);
+                    }
+                    const data = await response.json();
+                    if (data.upload_id) activeUploadId = data.upload_id;
+                    uploadedCount += 1;
+                    if (fileProcessItems[idx] && fileProcessItems[idx].status !== 'failed') {
+                        fileProcessItems[idx].status = 'queued';
+                    }
+                    renderProcessedFiles();
+                } catch (error) {
+                    failedCount += 1;
+                    if (fileProcessItems[idx] && fileProcessItems[idx].status !== 'processed') {
+                        fileProcessItems[idx].status = 'failed';
+                    }
+                    renderProcessedFiles();
+                    console.error(error);
+                }
+            }
+
+            if (uploadedCount > 0 && activeUploadId) {
+                try {
+                    setIndexState('indexing');
+                    setIndexProgress(0, `indexing uploaded files (${uploadedCount})`);
+                    for (let i = 0; i < files.length; i += 1) {
+                        const idx = batchStart + i;
+                        if (fileProcessItems[idx] && fileProcessItems[idx].status === 'queued') {
+                            fileProcessItems[idx].status = 'processing';
+                        }
+                    }
+                    renderProcessedFiles();
+
+                    const startResponse = await fetch('/index/upload/start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ upload_id: activeUploadId }),
+                    });
+                    if (!startResponse.ok) {
+                        throw new Error(`Failed to start indexing: ${startResponse.status}`);
+                    }
+                    const startData = await startResponse.json();
+                    if (startData.job_id) {
+                        await pollIndexStatus(startData.job_id, batchStart, files.length);
+                    }
+                } catch (error) {
+                    console.error(error);
+                    for (let i = 0; i < files.length; i += 1) {
+                        const idx = batchStart + i;
+                        if (fileProcessItems[idx] && fileProcessItems[idx].status === 'processing') {
+                            fileProcessItems[idx].status = 'failed';
+                        }
+                    }
+                    renderProcessedFiles();
+                    setIndexState('failed');
+                }
+            }
+
+            if (failedCount > 0 || uploadedCount === 0) {
+                try {
+                    await syncProcessedFilesForActiveUpload();
+                } catch (_e) {}
+            }
+            const hasPending = fileProcessItems.some((item) =>
+                item && (item.status === 'queued' || item.status === 'processing')
+            );
+            isIndexing = hasPending;
+            if (hasPending) {
+                setIndexState('indexing');
+            } else if (fileProcessItems.length > 0) {
+                setIndexState(failedCount === files.length ? 'failed' : 'ready');
+            }
+        }
+
+        async function loadSavedChats() {
+            try {
+                const response = await fetch('/chats');
+                if (!response.ok) {
+                    throw new Error(`Failed to load chats: ${response.status}`);
+                }
+                allChats = await response.json();
+                renderSavedChats();
+            } catch (error) {
+                savedChatsList.innerHTML = '';
+                savedChatsEmpty.textContent = 'Could not load saved chats.';
+                savedChatsEmpty.classList.remove('hidden');
+                console.error(error);
+            }
+        }
+
+        async function deleteChat(chatId) {
+            try {
+                const response = await fetch(`/chats/${chatId}`, { method: 'DELETE' });
+                if (!response.ok) {
+                    let detail = '';
+                    try {
+                        const err = await response.json();
+                        detail = err && err.detail ? String(err.detail) : '';
+                    } catch (_e) {}
+                    throw new Error(detail || `Failed to delete chat: ${response.status}`);
+                }
+                allChats = allChats.filter((chat) => chat.id !== chatId);
+                if (activeChatId === chatId) {
+                    activeChatId = null;
+                    shouldAutoTitle = false;
+                    resetConversationView();
+                }
+                renderSavedChats();
+                return true;
+            } catch (error) {
+                console.error(error);
+                return false;
+            }
+        }
+
+        async function renameChat(chat) {
+            const nextTitleRaw = prompt('Rename chat', chat.title || 'Untitled chat');
+            if (nextTitleRaw == null) return;
+            const nextTitle = nextTitleRaw.trim();
+            if (!nextTitle) return;
+
+            const attempts = [
+                { method: 'PATCH', url: `/chats/${encodeURIComponent(chat.id)}`, body: { title: nextTitle } },
+                { method: 'PUT', url: `/chats/${encodeURIComponent(chat.id)}`, body: { title: nextTitle } },
+                { method: 'POST', url: `/chats/${encodeURIComponent(chat.id)}/rename`, body: { title: nextTitle } },
+            ];
+
+            let updated = false;
+            for (const attempt of attempts) {
+                try {
+                    const response = await fetch(attempt.url, {
+                        method: attempt.method,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(attempt.body),
+                    });
+                    if (response.ok) {
+                        updated = true;
+                        break;
+                    }
+                } catch (_error) {
+                    // Try next fallback endpoint.
+                }
+            }
+
+            if (!updated) {
+                alert('Rename is not supported by the backend endpoint yet.');
+                return;
+            }
+            await loadSavedChats();
+        }
+
+        if (newChatBtn) {
+            newChatBtn.addEventListener('click', async () => {
+                try {
+                    clearSourcesPanel();
+                    // New chat starts with a clean upload scope (no inherited processed files).
+                    activeChatId = null;
+                    activeUploadId = null;
+                    shouldAutoTitle = false;
+                    fileProcessItems = [];
+                    isIndexing = false;
+                    setIndexState('idle');
+                    setIndexProgress(0, 'No files processed yet');
+                    renderProcessedFiles();
+                    resetConversationView();
+                    await loadSavedChats();
+                } catch (error) {
+                    console.error(error);
+                }
+            });
+        }
+
+        if (searchChatsInput) {
+            searchChatsInput.addEventListener('input', renderSavedChats);
+        }
+
+        if (attachFilesBtn && addFilesInput) {
+            attachFilesBtn.addEventListener('click', () => {
+                if (isIndexing) return;
+                addFilesInput.value = '';
+                addFilesInput.click();
+            });
+            addFilesInput.addEventListener('change', async () => {
+                const files = Array.from(addFilesInput.files || []);
+                if (!files.length) return;
+                const hasMessages = Boolean(chatThread && chatThread.children && chatThread.children.length > 0);
+                if (hasMessages) {
+                    openProcessedFilesModal();
+                }
+                await uploadAndIndex(files);
+            });
+        }
+        if (openProcessedFilesBtn) {
+            openProcessedFilesBtn.addEventListener('click', openProcessedFilesModal);
+        }
+        if (processedFilesModalOverlay) {
+            processedFilesModalOverlay.addEventListener('click', closeProcessedFilesModal);
+        }
+        if (closeProcessedFilesModalBtn) {
+            closeProcessedFilesModalBtn.addEventListener('click', closeProcessedFilesModal);
+        }
+
+        function setChatMode(mode) {
+            const normalized =
+                mode === 'general'
+                    ? 'general'
+                    : (mode === 'fast' ? 'fast' : (mode === 'moderate' ? 'moderate' : 'accurate'));
+            if (chatModeInput) chatModeInput.value = normalized;
+            if (chatModeLabel) {
+                chatModeLabel.textContent =
+                    normalized === 'general'
+                        ? 'General'
+                        : (normalized === 'fast' ? 'Fast' : (normalized === 'moderate' ? 'Moderate' : 'Accurate'));
+            }
+            modeOptionButtons.forEach((btn) => {
+                const isActive = btn.dataset.modeOption === normalized;
+                btn.setAttribute('data-active', isActive ? 'true' : 'false');
+            });
+        }
+
+        function setModeMenuOpen(open) {
+            if (!chatModeMenu || !chatModeChevron) return;
+            const isBottomDocked = Boolean(bottomComposerHost && !bottomComposerHost.classList.contains('hidden'));
+            chatModeMenu.classList.toggle('top-full', !isBottomDocked);
+            chatModeMenu.classList.toggle('mt-2', !isBottomDocked);
+            chatModeMenu.classList.toggle('bottom-full', isBottomDocked);
+            chatModeMenu.classList.toggle('mb-2', isBottomDocked);
+            chatModeMenu.classList.toggle('hidden', !open);
+            chatModeChevron.classList.toggle('rotate-180', open);
+        }
+
+        if (chatModeToggle && chatModeMenu) {
+            chatModeToggle.addEventListener('click', () => {
+                const isOpen = !chatModeMenu.classList.contains('hidden');
+                setModeMenuOpen(!isOpen);
+            });
+        }
+
+        modeOptionButtons.forEach((btn) => {
+            btn.addEventListener('click', () => {
+                setChatMode(btn.dataset.modeOption || 'accurate');
+                setModeMenuOpen(false);
+            });
+        });
+
+        document.addEventListener('click', (event) => {
+            if (chatModeDropdown && chatModeMenu && !chatModeDropdown.contains(event.target)) {
+                setModeMenuOpen(false);
+            }
+            if (!event.target.closest('.assistant-regen-toggle') && !event.target.closest('.regen-menu')) {
+                closeAllRegenMenus();
+            }
+        });
+        if (chatThread) {
+            chatThread.addEventListener('click', async (event) => {
+                const target = event.target.closest('[data-citation-ref]');
+                if (!target) return;
+                event.preventDefault();
+                const citationRef = target.getAttribute('data-citation-ref');
+                if (!citationRef) return;
+                await activateCitation(citationRef);
+            });
+        }
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                closeProcessedFilesModal();
+            }
+        });
+
+        if (sourcesPanelToggleBtn) {
+            sourcesPanelToggleBtn.addEventListener('click', () => {
+                const isOpen = sourcesPanel && !sourcesPanel.classList.contains('panel-collapsed');
+                setSourcesPanelOpen(!isOpen);
+            });
+        }
+        if (chatsSidebarToggleBtn) {
+            chatsSidebarToggleBtn.addEventListener('click', () => {
+                setChatsSidebarOpen(!isChatsSidebarOpen);
+            });
+        }
+        if (sourcesPanelCloseBtn) {
+            sourcesPanelCloseBtn.addEventListener('click', () => setSourcesPanelOpen(false));
+        }
+        if (chatsSidebarBackdrop) {
+            chatsSidebarBackdrop.addEventListener('click', () => setChatsSidebarOpen(false));
+        }
+        if (sourcesPanelBackdrop) {
+            sourcesPanelBackdrop.addEventListener('click', () => setSourcesPanelOpen(false));
+        }
+        if (themeToggleBtn) {
+            themeToggleBtn.addEventListener('click', () => {
+                applyTheme(getCurrentTheme() === 'dark' ? 'light' : 'dark');
+            });
+        }
+        if (settingsToggleBtn) {
+            settingsToggleBtn.addEventListener('click', openLlmSettingsModal);
+        }
+        if (llmSettingsOverlay) {
+            llmSettingsOverlay.addEventListener('click', closeLlmSettingsModal);
+        }
+        if (closeLlmSettingsBtn) {
+            closeLlmSettingsBtn.addEventListener('click', closeLlmSettingsModal);
+        }
+        if (llmProviderSelect) {
+            llmProviderSelect.addEventListener('change', () => {
+                setProviderSections(llmProviderSelect.value);
+            });
+        }
+        if (saveLlmSettingsBtn) {
+            saveLlmSettingsBtn.addEventListener('click', async () => {
+                await saveLlmSettings();
+            });
+        }
+        if (ollamaRefreshModelsBtn) {
+            ollamaRefreshModelsBtn.addEventListener('click', async () => {
+                await loadOllamaModels((ollamaModelSelect && ollamaModelSelect.value) || '');
+            });
+        }
+        if (ollamaDownloadModelBtn) {
+            ollamaDownloadModelBtn.addEventListener('click', async () => {
+                await pullOllamaModel();
+            });
+        }
+        if (openSourceFileBtn) {
+            openSourceFileBtn.addEventListener('click', () => {
+                if (!currentPreviewChunkId) return;
+                window.open(`/chunks/${encodeURIComponent(currentPreviewChunkId)}/file`, '_blank', 'noopener,noreferrer');
+            });
+        }
+
+        window.__handleComposerSend = sendChatMessage;
+        window.__interruptStream = () => {
+            if (currentStreamAbortController) currentStreamAbortController.abort();
+        };
+        window.__isChatStreaming = false;
+
+        const handleResponsiveDrawerMode = () => {
+            if (!isMobileDrawerMode()) {
+                setBackdropOpen(chatsSidebarBackdrop, false);
+                setBackdropOpen(sourcesPanelBackdrop, false);
+                return;
+            }
+            if (isChatsSidebarOpen && isSourcesPanelOpen()) {
+                setSourcesPanelOpen(false);
+            }
+        };
+        if (MOBILE_DRAWER_MQ.addEventListener) {
+            MOBILE_DRAWER_MQ.addEventListener('change', handleResponsiveDrawerMode);
+        } else if (MOBILE_DRAWER_MQ.addListener) {
+            MOBILE_DRAWER_MQ.addListener(handleResponsiveDrawerMode);
+        }
+
+        applyTheme(getCurrentTheme());
+        setChatMode((chatModeInput && chatModeInput.value) || 'accurate');
+        setIndexState('idle');
+        setIndexProgress(0, 'No files processed yet');
+        renderProcessedFiles();
+        clearSourcesPanel();
+        setSourcesPanelOpen(false);
+        setChatsSidebarOpen(!isMobileDrawerMode());
+        handleResponsiveDrawerMode();
+        loadLlmSettings();
+        if (window.__updateSendVisibility) window.__updateSendVisibility();
+        loadSavedChats();
+    </script>
+</body>
+
+</html>

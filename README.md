@@ -1,0 +1,106 @@
+# ChatRAG
+
+[![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC--BY--NC--4.0-lightgrey.svg)](LICENSE)
+
+Local-first RAG chat app for multi-document QA with grounded citations.
+
+## Highlights
+- Local indexing for `.pdf`, `.docx`, `.pptx`, `.txt`, `.md`, `.csv`
+- Hybrid retrieval: dense vectors (ChromaDB) + lexical search (SQLite FTS5)
+- Four modes: `general`, `fast`, `moderate`, `accurate`
+- Provider runtime: `ollama` (default), `openai`, `deepseek`
+- Token and indexing observability via `.rag/token_logs.txt` and `.rag/log.txt`
+
+## Modes
+- `general`: normal chat, no file retrieval, keeps recent chat memory (up to 80 messages), ignores citation-backed turns for memory context
+- `fast`: lowest latency / lowest cost RAG path
+- `moderate`: stronger recall with bounded token budget
+- `accurate`: deepest retrieval orchestration and highest quality
+
+## Architecture
+![System Architecture](images/system_architecture.png)
+
+### Runtime components
+- API/server: `app/main.py`
+- Orchestration: `app/chat_service.py`
+- Indexing worker: `app/indexer.py`
+- Parsing/chunking: `app/parsers.py`
+- Embeddings: `app/embeddings.py`
+- Retrieval: `app/retrieval.py`
+- Vector store: `app/vector_store.py` (ChromaDB)
+- Metadata/chat store: `app/database.py` (SQLite)
+
+## UI and Diagrams
+![Main Chat View](images/mainchatview.png)
+![LLM Settings](images/llm_settings.png)
+![File Upload](images/fileupload.png)
+![Dark Mode](images/darkmode.png)
+
+![Chat Stream Sequence](images/chat_stream_sequence.png)
+![Mode Comparison](images/mode_comparison.png)
+![Token Usage by Mode](images/token_usage_by_mode.png)
+![Indexing Throughput](images/indexing_throughput.png)
+
+## Quick Start
+### Windows (PowerShell)
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+python app/main.py
+```
+
+### Windows (CMD)
+```bat
+python -m venv .venv
+.venv\Scripts\activate.bat
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+python app/main.py
+```
+
+### Linux/macOS
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+python app/main.py
+```
+
+## Key API Endpoints
+### Health and settings
+- `GET /health`
+- `GET /settings/llm`
+- `POST /settings/llm`
+- `GET /settings/ollama/models`
+
+### Indexing
+- `POST /index`
+- `POST /index/upload`
+- `POST /index/upload/start`
+- `GET /index/status?job_id=...`
+
+### Chat
+- `POST /chat`
+- `POST /chat/stream`
+- `POST /chats`
+- `GET /chats`
+- `PATCH /chats/{chat_id}`
+- `POST /chats/{chat_id}/rename`
+
+## Configuration
+Main settings are in `app/config.py`:
+- Provider: `LLM_PROVIDER`, `OLLAMA_*`, `OPENAI_*`, `DEEPSEEK_*`
+- Retrieval thresholds: `LOW_CONFIDENCE_THRESHOLD`, `HARD_NOT_FOUND_THRESHOLD`
+- Embedding/storage: `EMBEDDING_*`, `CHROMA_*`, `SQLITE_PATH`
+
+## Docs
+- `docs/architecture.md`
+- `docs/benchmarks.md`
+
+## License
+This project is licensed under **CC BY-NC 4.0**.
+You may use, modify, and share for non-commercial purposes with attribution.
+Commercial use is not permitted without explicit permission.
