@@ -4,6 +4,30 @@
 
 Local-first RAG chat app for multi-document QA with grounded citations.
 
+## Non-technical install (Windows)
+
+If you don’t want to install Python or run commands, download the full app bundle here:
+
+- **Download:** [<https://drive.google.com/file/d/1JqyMfPR4YzhAIpWlamhThkXCMZlZXXUO/view?usp=sharing>](Download from Google Drive)
+
+### How to run
+1. Download the ZIP
+2. Extract it (right click. Extract All)
+3. Open the extracted folder
+4. Double click **ChatRAG.bat**
+
+That’s it. A window will open and start the app.
+
+### Optional. Use Ollama for local models
+If you want to run models locally (no cloud), install Ollama first:
+
+- **Download Ollama (Windows):** https://ollama.com/download/windows
+
+Then you can pick **Provider runtime: `ollama`** inside ChatRAG.
+
+### If Windows blocks it
+If you see “Windows protected your PC”, click **More info**. **Run anyway**.
+
 ## Highlights
 - Local indexing for `.pdf`, `.docx`, `.pptx`, `.txt`, `.md`, `.csv`
 - Hybrid retrieval: dense vectors (ChromaDB) + lexical search (SQLite FTS5)
@@ -95,6 +119,7 @@ Main settings are in `app/config.py`:
 - Provider: `LLM_PROVIDER`, `OLLAMA_*`, `OPENAI_*`, `DEEPSEEK_*`
 - Retrieval thresholds: `LOW_CONFIDENCE_THRESHOLD`, `HARD_NOT_FOUND_THRESHOLD`
 - Embedding/storage: `EMBEDDING_*`, `CHROMA_*`, `SQLITE_PATH`
+- Metadata/chat store: `app/database.py` (SQLite)
 
 ## Docs
 - `docs/architecture.md`
