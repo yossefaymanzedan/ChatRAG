@@ -1,6 +1,6 @@
 # ChatRAG
 
-[![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC--BY--NC--4.0-lightgrey.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 Local-first RAG chat app for multi-document QA with grounded citations.
 
@@ -126,6 +126,6 @@ Main settings are in `app/config.py`:
 - `docs/benchmarks.md`
 
 ## License
-This project is licensed under **CC BY-NC 4.0**.
-You may use, modify, and share for non-commercial purposes with attribution.
-Commercial use is not permitted without explicit permission.
+This project is licensed under the **Apache License 2.0**.
+
+You may use, modify, and distribute this software, including for commercial purposes, as long as you comply with the terms of the license (e.g., include the required notices and a copy of the license).
