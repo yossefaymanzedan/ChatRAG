@@ -1,4 +1,3 @@
-
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -415,5 +414,4 @@ def parse_txt(path: Path) -> ParseResult:
         )
 
     return ParseResult(chunks=chunks, warnings=[])
-
 
