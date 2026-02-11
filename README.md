@@ -29,7 +29,7 @@ Then you can pick **Provider runtime: `ollama`** inside ChatRAG.
 If you see “Windows protected your PC”, click **More info**. **Run anyway**.
 
 ## Highlights
-- Local indexing for `.pdf`, `.docx`, `.pptx`, `.txt`, `.md`, `.csv`
+- Local indexing for `.pdf`, `.docx`, `.pptx`, `.txt`, `.md`
 - Hybrid retrieval: dense vectors (ChromaDB) + lexical search (SQLite FTS5)
 - Four modes: `general`, `fast`, `moderate`, `accurate`
 - Provider runtime: `ollama` (default), `openai`, `deepseek`
