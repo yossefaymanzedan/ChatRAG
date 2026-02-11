@@ -1,4 +1,4 @@
-import csv
+
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,7 +8,7 @@ from pptx import Presentation
 from pypdf import PdfReader
 
 
-SUPPORTED_EXTS = {".pdf", ".docx", ".pptx", ".txt", ".md", ".csv"}
+SUPPORTED_EXTS = {".pdf", ".docx", ".pptx", ".txt", ".md"}
 
 
 @dataclass
@@ -177,8 +177,6 @@ def parse_file(
         return parse_markdown(path)
     if ext == ".txt":
         return parse_txt(path)
-    if ext == ".csv":
-        return parse_csv(path)
     return ParseResult(chunks=[], warnings=[f"Unsupported file extension: {ext}"])
 
 
@@ -419,29 +417,3 @@ def parse_txt(path: Path) -> ParseResult:
     return ParseResult(chunks=chunks, warnings=[])
 
 
-def parse_csv(path: Path) -> ParseResult:
-    chunks: list[dict] = []
-    with path.open("r", encoding="utf-8", errors="ignore", newline="") as f:
-        reader = csv.DictReader(f)
-        headers = reader.fieldnames or []
-        headers_str = ", ".join(headers)
-        for row_idx, row in enumerate(reader, start=1):
-            pairs = " ".join(f"{k}={row.get(k, '')}" for k in headers)
-            text = f"Headers: {headers_str}\nRow {row_idx}: {pairs}".strip()
-            chunks.append(
-                {
-                    "chunk_index": row_idx - 1,
-                    "text": text,
-                    "token_count": token_count(text),
-                    "anchor_type": "csv_row",
-                    "anchor_page": None,
-                    "anchor_section": None,
-                    "anchor_paragraph": None,
-                    "anchor_row": row_idx,
-                    "start_char": None,
-                    "end_char": None,
-                    "preview": preview_text(text),
-                }
-            )
-
-    return ParseResult(chunks=chunks, warnings=[])
