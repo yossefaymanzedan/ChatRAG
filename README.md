@@ -25,6 +25,8 @@ If you want to run models locally (no cloud), install Ollama first:
 
 Then you can pick **Provider runtime: `ollama`** inside ChatRAG.
 
+- **Model parameters (size):** A “7B” model has ~7 billion parameters. Bigger models (e.g., 13B, 70B) usually provide better reasoning and text quality, but require more RAM/VRAM and may run slower on typical PCs.
+
 ### If Windows blocks it
 If you see “Windows protected your PC”, click **More info**. **Run anyway**.
 
