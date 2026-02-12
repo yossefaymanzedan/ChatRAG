@@ -1300,6 +1300,7 @@
         let citationMap = {};
         let currentPreviewChunkId = null;
         let isChatsSidebarOpen = true;
+        let isOllamaDownloadInProgress = false;
         const MODAL_ANIMATION_MS = 220;
         const MOBILE_DRAWER_MQ = window.matchMedia('(max-width: 900px)');
 
@@ -1435,6 +1436,10 @@
 
         async function closeLlmSettingsModal() {
             if (!llmSettingsModal) return;
+            if (isOllamaDownloadInProgress) {
+                alert('Model download in progress. Please wait until it completes.');
+                return;
+            }
             await closeModalAnimated(llmSettingsModal);
         }
 
@@ -1455,6 +1460,32 @@
                     api_key: (deepSeekApiKeyInput && deepSeekApiKeyInput.value.trim()) || undefined,
                 },
             };
+            if (provider === 'ollama') {
+                const modelName = String((payload.ollama && payload.ollama.model) || '').trim();
+                if (!modelName) {
+                    alert('Select or type an Ollama model first.');
+                    return;
+                }
+                if (saveLlmSettingsBtn) saveLlmSettingsBtn.disabled = true;
+                try {
+                    const modelsRes = await fetch('/settings/ollama/models');
+                    if (!modelsRes.ok) {
+                        const txt = await modelsRes.text();
+                        throw new Error(`Failed to read Ollama models: ${txt}`);
+                    }
+                    const modelsPayload = await modelsRes.json();
+                    const downloaded = Array.isArray(modelsPayload.models) ? modelsPayload.models : [];
+                    const isInstalled = downloaded.some((m) => String((m && m.name) || '').trim() === modelName);
+                    if (!isInstalled) {
+                        await pullOllamaModel(modelName, { showErrorAlert: false });
+                    }
+                } catch (error) {
+                    alert(String(error && error.message ? error.message : error));
+                    return;
+                } finally {
+                    if (saveLlmSettingsBtn) saveLlmSettingsBtn.disabled = false;
+                }
+            }
             const res = await fetch('/settings/llm', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1468,12 +1499,14 @@
             closeLlmSettingsModal();
         }
 
-        async function pullOllamaModel() {
-            const modelName = (ollamaCustomModelInput && ollamaCustomModelInput.value.trim()) || (ollamaModelSelect && ollamaModelSelect.value) || '';
+        async function pullOllamaModel(forcedModelName = '', options = {}) {
+            const showErrorAlert = options && options.showErrorAlert !== false;
+            const modelName = String(forcedModelName || (ollamaCustomModelInput && ollamaCustomModelInput.value.trim()) || (ollamaModelSelect && ollamaModelSelect.value) || '').trim();
             if (!modelName) {
-                alert('Select or type a model name first.');
-                return;
+                if (showErrorAlert) alert('Select or type a model name first.');
+                return false;
             }
+            isOllamaDownloadInProgress = true;
             if (ollamaDownloadProgress) ollamaDownloadProgress.classList.remove('hidden');
             if (ollamaDownloadBar) ollamaDownloadBar.style.width = '0%';
             if (ollamaDownloadPercent) ollamaDownloadPercent.textContent = '0%';
@@ -1487,7 +1520,8 @@
                     body: JSON.stringify({ model: modelName }),
                 });
                 if (!res.ok || !res.body) {
-                    throw new Error('Pull request failed.');
+                    const txt = await res.text();
+                    throw new Error(txt || 'Pull request failed.');
                 }
                 const reader = res.body.getReader();
                 const decoder = new TextDecoder();
@@ -1524,9 +1558,15 @@
                     }
                 }
                 await loadOllamaModels(modelName);
+                return true;
             } catch (error) {
-                alert(String(error && error.message ? error.message : error));
+                if (showErrorAlert) {
+                    alert(String(error && error.message ? error.message : error));
+                    return false;
+                }
+                throw error;
             } finally {
+                isOllamaDownloadInProgress = false;
                 if (ollamaDownloadModelBtn) ollamaDownloadModelBtn.disabled = false;
             }
         }
