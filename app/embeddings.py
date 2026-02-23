@@ -1,32 +1,51 @@
-import os
 from pathlib import Path
 
 from sentence_transformers import SentenceTransformer
 
-# Force HF/Transformers into offline mode for this process.
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
-os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
-os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
-
 
 class EmbeddingService:
     def __init__(self, model_name: str, cache_dir: str = ".rag/models", offline: bool = False) -> None:
-        model_ref = self._resolve_model(model_name, cache_dir)
-        self.model = SentenceTransformer(model_ref, local_files_only=True)
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def _resolve_model(self, model_name: str, cache_dir: str) -> str:
+        local_model = self._resolve_local_model(model_name)
+        if local_model is not None:
+            self.model = SentenceTransformer(
+                str(local_model),
+                cache_folder=str(self.cache_dir),
+                local_files_only=True,
+            )
+            return
+
+        if offline:
+            expected = self.cache_dir / model_name.replace("/", "--")
+            raise RuntimeError(
+                f"Offline embedding model not found: {expected}. "
+                "Set EMBEDDING_OFFLINE=0 to allow automatic download from Hugging Face."
+            )
+
+        try:
+            self.model = SentenceTransformer(
+                model_name,
+                cache_folder=str(self.cache_dir),
+                local_files_only=False,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to load embedding model '{model_name}' from Hugging Face. "
+                "Check internet access/model name, or place the model under the embedding cache directory."
+            ) from exc
+
+    def _resolve_local_model(self, model_name: str) -> Path | None:
         model_path = Path(model_name)
         if model_path.exists() and model_path.is_dir():
-            return str(model_path)
+            return model_path
 
-        local_model = Path(cache_dir) / model_name.replace("/", "--")
+        local_model = self.cache_dir / model_name.replace("/", "--")
         if local_model.exists() and any(local_model.iterdir()):
-            return str(local_model)
+            return local_model
 
-        raise RuntimeError(
-            f"Offline embedding model not found: {local_model}. "
-            "Place the model there before starting the server."
-        )
+        return None
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
