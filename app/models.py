@@ -13,6 +13,15 @@ class IndexResponse(BaseModel):
     upload_id: str | None = None
 
 
+class OcrStatsResponse(BaseModel):
+    pdf_files_scanned: int = 0
+    images_found: int = 0
+    image_pages_found: int = 0
+    image_pages_processed: int = 0
+    image_pages_added_to_rag: int = 0
+    image_pages_not_added_to_rag: int = 0
+
+
 class IndexStatusResponse(BaseModel):
     job_id: str
     status: Literal["queued", "running", "completed", "failed"]
@@ -23,6 +32,7 @@ class IndexStatusResponse(BaseModel):
     warnings: list[str]
     errors: list[str]
     detail: str | None = None
+    ocr: OcrStatsResponse = Field(default_factory=OcrStatsResponse)
 
 
 class ChatRequest(BaseModel):
@@ -118,6 +128,7 @@ class UploadStatusResponse(BaseModel):
     has_indexed_content: bool
     document_count: int = 0
     chunk_count: int = 0
+    ocr: OcrStatsResponse = Field(default_factory=OcrStatsResponse)
 
 
 class UploadFileItem(BaseModel):

@@ -3,24 +3,16 @@ from pathlib import Path
 
 from sentence_transformers import SentenceTransformer
 
+# Force HF/Transformers into offline mode for this process.
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
+
+
 class EmbeddingService:
     def __init__(self, model_name: str, cache_dir: str = ".rag/models", offline: bool = False) -> None:
-        self.offline = bool(offline)
-        if self.offline:
-            # Keep old behavior when offline mode is explicitly requested.
-            os.environ.setdefault("HF_HUB_OFFLINE", "1")
-            os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
-            os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
-            model_ref = self._resolve_model(model_name, cache_dir)
-            self.model = SentenceTransformer(model_ref, local_files_only=True)
-            return
-
-        # Online mode: allow fetching directly from Hugging Face and cache locally.
-        self.model = SentenceTransformer(
-            model_name,
-            cache_folder=cache_dir,
-            local_files_only=False,
-        )
+        model_ref = self._resolve_model(model_name, cache_dir)
+        self.model = SentenceTransformer(model_ref, local_files_only=True)
 
     def _resolve_model(self, model_name: str, cache_dir: str) -> str:
         model_path = Path(model_name)

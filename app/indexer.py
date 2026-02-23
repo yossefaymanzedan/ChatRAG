@@ -14,7 +14,7 @@ from app.config import settings
 from app.database import Database
 from app.embeddings import EmbeddingService
 from app.llm import DeepSeekClient
-from app.parsers import SUPPORTED_EXTS, parse_file, preview_text, token_count
+from app.parsers import OCR_STAT_KEYS, SUPPORTED_EXTS, parse_file, preview_text, token_count
 from app.vector_store import VectorStore
 
 
@@ -36,6 +36,10 @@ def _build_index_logger() -> logging.Logger:
 INDEX_LOGGER = _build_index_logger()
 
 
+def _empty_ocr_stats() -> dict[str, int]:
+    return {key: 0 for key in OCR_STAT_KEYS}
+
+
 @dataclass
 class JobState:
     job_id: str
@@ -47,6 +51,7 @@ class JobState:
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     detail: str | None = None
+    ocr: dict[str, int] = field(default_factory=_empty_ocr_stats)
 
 
 class IndexJobManager:
@@ -134,11 +139,13 @@ class IndexJobManager:
                 file_hash = self._sha256(file_path)
                 modified = datetime.fromtimestamp(file_path.stat().st_mtime).isoformat()
                 existing = existing_docs.get(abs_path)
+                is_pdf = file_path.suffix.lower() == ".pdf"
 
                 if (
                     existing
                     and existing["file_hash"] == file_hash
                     and self.db.document_has_anchor_type(existing["id"], "doc_summary")
+                    and not is_pdf
                 ):
                     total_chunks += len(self.db.get_chunk_ids_for_document(existing["id"]))
                     self._update(job_id, chunks_indexed=total_chunks)
@@ -176,7 +183,11 @@ class IndexJobManager:
                         pdf_text_threshold=settings.pdf_text_threshold,
                         ignore_front_matter=settings.ignore_front_matter,
                         front_matter_scan_pages=settings.front_matter_scan_pages,
+                        enable_pdf_ocr=settings.pdf_ocr_enabled,
+                        pdf_ocr_render_zoom=settings.pdf_ocr_render_zoom,
                     )
+                    if parse.stats:
+                        self._merge_ocr_stats(job_id, parse.stats)
                     if parse.warnings:
                         self._append_warnings(job_id, parse.warnings)
                     parse_elapsed = time.perf_counter() - parse_started
@@ -410,6 +421,12 @@ class IndexJobManager:
     def _append_errors(self, job_id: str, items: list[str]) -> None:
         with self._lock:
             self._jobs[job_id].errors.extend(items)
+
+    def _merge_ocr_stats(self, job_id: str, stats: dict[str, int]) -> None:
+        with self._lock:
+            ocr = self._jobs[job_id].ocr
+            for key in OCR_STAT_KEYS:
+                ocr[key] = int(ocr.get(key, 0) or 0) + int(stats.get(key, 0) or 0)
 
     def _upsert_with_retry(
         self,

@@ -1002,6 +1002,11 @@
                     <div class="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden mb-3">
                         <div id="index-progress-bar" class="h-full bg-blue-500 w-0 rounded-full"></div>
                     </div>
+                    <div class="mb-3 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2">
+                        <p class="text-[11px] font-semibold uppercase tracking-wide text-blue-800">PDF image OCR</p>
+                        <p id="ocr-stats-summary" class="mt-1 text-xs text-blue-700">No PDF image stats yet.</p>
+                        <p id="ocr-stats-detail" class="mt-0.5 text-[11px] text-blue-600"></p>
+                    </div>
                     <div class="flex items-center justify-between mb-2">
                         <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Processed files</p>
                         <p id="processed-files-summary" class="text-xs text-gray-500">0 processed</p>
@@ -1048,7 +1053,7 @@
             <div class="border-t border-blue-100/80 bg-white/95 backdrop-blur-sm">
                 <div class="px-4 pt-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Source preview</div>
                 <div id="source-preview-body" class="max-h-56 overflow-y-auto px-4 pt-2 pb-3 text-sm text-slate-700">
-                    Select a citation like C1 to preview.
+                    Select a citation like C1 or I1 to preview.
                 </div>
                 <div class="px-4 py-2 border-t border-blue-100 text-[11px] text-slate-500 bg-slate-50/70">
                     <div class="flex items-end justify-between gap-3">
@@ -1241,6 +1246,8 @@
         const indexingLabel = document.getElementById('indexing-label');
         const indexPercent = document.getElementById('index-percent');
         const indexProgressBar = document.getElementById('index-progress-bar');
+        const ocrStatsSummary = document.getElementById('ocr-stats-summary');
+        const ocrStatsDetail = document.getElementById('ocr-stats-detail');
         const processedFilesSummary = document.getElementById('processed-files-summary');
         const processedFilesList = document.getElementById('processed-files-list');
         const processedFilesModal = document.getElementById('processed-files-modal');
@@ -1660,12 +1667,114 @@
             if (label && indexingLabel) indexingLabel.textContent = label;
         }
 
+        function normalizeOcrStats(raw) {
+            const stats = raw && typeof raw === 'object' ? raw : {};
+            return {
+                pdfFilesScanned: Number(stats.pdf_files_scanned) || 0,
+                imagesFound: Number(stats.images_found) || 0,
+                imagePagesFound: Number(stats.image_pages_found) || 0,
+                imagePagesProcessed: Number(stats.image_pages_processed) || 0,
+                imagePagesAddedToRag: Number(stats.image_pages_added_to_rag) || 0,
+                imagePagesNotAddedToRag: Number(stats.image_pages_not_added_to_rag) || 0,
+            };
+        }
+
+        function buildOcrStatsRaw(stats) {
+            const normalized = normalizeOcrStats(stats);
+            return {
+                pdf_files_scanned: normalized.pdfFilesScanned,
+                images_found: normalized.imagesFound,
+                image_pages_found: normalized.imagePagesFound,
+                image_pages_processed: normalized.imagePagesProcessed,
+                image_pages_added_to_rag: normalized.imagePagesAddedToRag,
+                image_pages_not_added_to_rag: normalized.imagePagesNotAddedToRag,
+            };
+        }
+
+        function parseOcrStatsFromWarnings(warnings) {
+            if (!Array.isArray(warnings) || !warnings.length) return null;
+            const rx = /image\/OCR summary\s*->\s*images found:\s*(\d+)\s*\|\s*image pages:\s*(\d+)\s*\|\s*OCR processed pages:\s*(\d+)\s*\|\s*image pages added to RAG:\s*(\d+)\s*\|\s*image pages not added:\s*(\d+)/i;
+            const acc = {
+                pdf_files_scanned: 0,
+                images_found: 0,
+                image_pages_found: 0,
+                image_pages_processed: 0,
+                image_pages_added_to_rag: 0,
+                image_pages_not_added_to_rag: 0,
+            };
+            for (const line of warnings) {
+                const m = String(line || '').match(rx);
+                if (!m) continue;
+                acc.pdf_files_scanned += 1;
+                acc.images_found += Number(m[1]) || 0;
+                acc.image_pages_found += Number(m[2]) || 0;
+                acc.image_pages_processed += Number(m[3]) || 0;
+                acc.image_pages_added_to_rag += Number(m[4]) || 0;
+                acc.image_pages_not_added_to_rag += Number(m[5]) || 0;
+            }
+            return acc.pdf_files_scanned > 0 ? acc : null;
+        }
+
+        function extractEffectiveOcrStats(statusLike) {
+            const fromPayload = buildOcrStatsRaw(statusLike && statusLike.ocr ? statusLike.ocr : null);
+            if ((Number(fromPayload.pdf_files_scanned) || 0) > 0) return fromPayload;
+            const fromWarnings = parseOcrStatsFromWarnings(statusLike && statusLike.warnings ? statusLike.warnings : []);
+            if (fromWarnings) return fromWarnings;
+            return null;
+        }
+
+        function ocrStatsStorageKey(uploadId) {
+            return `ocr_stats_${String(uploadId || '').trim()}`;
+        }
+
+        function cacheOcrStats(uploadId, raw) {
+            const key = ocrStatsStorageKey(uploadId);
+            if (!uploadId || !key) return;
+            const normalized = buildOcrStatsRaw(raw);
+            if ((Number(normalized.pdf_files_scanned) || 0) <= 0) return;
+            try {
+                localStorage.setItem(key, JSON.stringify(normalized));
+            } catch (_e) {}
+        }
+
+        function readCachedOcrStats(uploadId) {
+            const key = ocrStatsStorageKey(uploadId);
+            if (!uploadId || !key) return null;
+            try {
+                const raw = localStorage.getItem(key);
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                const normalized = buildOcrStatsRaw(parsed);
+                return (Number(normalized.pdf_files_scanned) || 0) > 0 ? normalized : null;
+            } catch (_e) {
+                return null;
+            }
+        }
+
+        function setOcrStats(raw) {
+            if (!ocrStatsSummary || !ocrStatsDetail) return;
+            const stats = normalizeOcrStats(raw);
+            if (stats.pdfFilesScanned <= 0) {
+                ocrStatsSummary.textContent = 'No PDF image stats yet.';
+                ocrStatsDetail.textContent = '';
+                return;
+            }
+            if (stats.imagePagesFound <= 0 || stats.imagesFound <= 0) {
+                ocrStatsSummary.textContent = `Scanned ${stats.pdfFilesScanned} PDF file(s). No image-based pages found.`;
+                ocrStatsDetail.textContent = '';
+                return;
+            }
+            ocrStatsSummary.textContent = `Images found: ${stats.imagesFound} across ${stats.imagePagesFound} image page(s). OCR processed: ${stats.imagePagesProcessed} page(s).`;
+            ocrStatsDetail.textContent = `Added to RAG: ${stats.imagePagesAddedToRag} image page(s) | Not added: ${stats.imagePagesNotAddedToRag} image page(s).`;
+        }
+
         function renderProcessedFiles() {
             if (!processedFilesList || !processedFilesSummary) return;
             processedFilesList.innerHTML = '';
             if (!fileProcessItems.length) {
                 processedFilesList.innerHTML = '<div class="px-3 py-2 text-xs text-gray-500">Use the + button to add files for processing.</div>';
                 processedFilesSummary.textContent = '0 processed';
+                setOcrStats(null);
                 if (processedFilesModalSummary) processedFilesModalSummary.textContent = '0 files';
                 if (processedFilesModalList) processedFilesModalList.innerHTML = '<div class="px-5 py-4 text-sm text-gray-500">No files yet.</div>';
                 return;
@@ -1898,12 +2007,48 @@
             }
         }
 
-        function markdownToHtml(markdownText, responseId) {
+        function isImageAnchorType(anchorType) {
+            const raw = String(anchorType || '').trim().toLowerCase();
+            return raw === 'image' || raw === 'image_source' || raw === 'pdf_image' || raw === 'pdf_image_source';
+        }
+
+        function citationDisplayId(citationId, anchorType) {
+            const normalized = normalizeCitationId(citationId);
+            const match = normalized.match(/\d+/);
+            const prefix = isImageAnchorType(anchorType) ? 'I' : 'C';
+            if (match && match[0]) return `${prefix}${match[0]}`;
+            return normalized ? `${prefix}${normalized}` : '';
+        }
+
+        function buildCitationDisplayMap(citations) {
+            const out = {};
+            if (!Array.isArray(citations)) return out;
+            citations.forEach((c) => {
+                const rawId = String(c && c.citation_id ? c.citation_id : '').trim();
+                if (!rawId) return;
+                const normalized = normalizeCitationId(rawId);
+                const display = citationDisplayId(rawId, c.anchor_type);
+                if (!display) return;
+                const variants = new Set();
+                variants.add(rawId);
+                if (normalized) variants.add(normalized);
+                if (normalized) variants.add(normalized.toLowerCase());
+                const digits = normalized.replace(/^C/i, '');
+                if (digits) variants.add(digits);
+                variants.forEach((v) => {
+                    out[v] = display;
+                });
+            });
+            return out;
+        }
+
+        function markdownToHtml(markdownText, responseId, citations = []) {
+            const displayMap = buildCitationDisplayMap(citations);
             const raw = (window.marked && typeof window.marked.parse === 'function')
                 ? window.marked.parse(markdownText || '')
                 : escapeHtml(markdownText || '').replace(/\n/g, '<br>');
             return raw.replace(/\b(C\d+)\b/g, (_match, cid) =>
-                `<a href="#" data-citation-ref="${responseId}:${cid}" class="text-blue-600 font-semibold hover:underline">${cid}</a>`
+                `<a href="#" data-citation-ref="${responseId}:${cid}" class="text-blue-600 font-semibold hover:underline">${escapeHtml(displayMap[cid] || displayMap[normalizeCitationId(cid)] || cid)}</a>`
             );
         }
 
@@ -1928,6 +2073,23 @@
             return `${size.toFixed(size < 10 && idx > 0 ? 1 : 0)} ${units[idx]}`;
         }
 
+        function formatAnchorType(anchorType) {
+            const raw = String(anchorType || '').trim().toLowerCase();
+            if (!raw) return '';
+            if (isImageAnchorType(raw)) {
+                return 'image source';
+            }
+            if (raw === 'pdf_page') return 'text source';
+            return raw.replace(/_/g, ' ');
+        }
+
+        function formatAnchorMeta(anchorType, anchorPage, anchorRow) {
+            const label = formatAnchorType(anchorType);
+            const page = anchorPage ? `page ${anchorPage}` : '';
+            const row = anchorRow ? `row ${anchorRow}` : '';
+            return [label, page, row].filter(Boolean).join(' ');
+        }
+
         function clearSourcesPanel() {
             citationMap = {};
             responseCounter = 0;
@@ -1937,7 +2099,7 @@
             }
             if (sourcesEmptyState) sourcesEmptyState.classList.remove('hidden');
             if (sourcePreviewBody) {
-                sourcePreviewBody.innerHTML = 'Select a citation like <span class="font-semibold text-blue-700">C1</span> to preview.';
+                sourcePreviewBody.innerHTML = 'Select a citation like <span class="font-semibold text-blue-700">C1</span> or <span class="font-semibold text-blue-700">I1</span> to preview.';
             }
             if (sourcePreviewFile) sourcePreviewFile.textContent = 'File: -';
             if (sourcePreviewSize) sourcePreviewSize.textContent = 'Size: -';
@@ -1997,6 +2159,11 @@
 
             Array.from(groups.values()).forEach((c) => {
                 const primaryId = `${responseId}:${(c.citation_ids && c.citation_ids[0]) || c.citation_id || ''}`;
+                const displayCitationIds = Array.from(
+                    new Set((c.citation_ids || [c.citation_id || ''])
+                        .map((id) => citationDisplayId(id, c.anchor_type))
+                        .filter(Boolean))
+                );
                 const row = document.createElement('button');
                 row.type = 'button';
                 row.className = 'w-full text-left rounded-2xl border border-blue-100 bg-white/95 p-3.5 shadow-sm hover:shadow-md hover:border-blue-200 hover:-translate-y-[1px] transition-all';
@@ -2009,10 +2176,10 @@
                             </span>
                             <div class="min-w-0">
                                 <p class="text-sm font-semibold text-slate-800 truncate">${escapeHtml((c.file_path || '').split(/[\\\\/]/).pop() || 'source')}</p>
-                                <p class="text-[11px] text-slate-500 truncate">${escapeHtml(c.anchor_type || '')} ${c.anchor_page ? (`page ${c.anchor_page}`) : ''} ${c.anchor_row ? (`row ${c.anchor_row}`) : ''}</p>
+                                <p class="text-[11px] text-slate-500 truncate">${escapeHtml(formatAnchorMeta(c.anchor_type, c.anchor_page, c.anchor_row))}</p>
                             </div>
                         </div>
-                        <span class="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-1 rounded-full shrink-0">${escapeHtml((c.citation_ids || [c.citation_id || '']).join(', '))}</span>
+                        <span class="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-1 rounded-full shrink-0">${escapeHtml((displayCitationIds.length ? displayCitationIds : (c.citation_ids || [c.citation_id || ''])).join(', '))}</span>
                     </div>
                 `;
                 row.addEventListener('click', async () => {
@@ -2035,7 +2202,7 @@
                     sourcePreviewBody.innerHTML = `
                         <div class="source-preview-card">
                             <p class="source-preview-title">${escapeHtml(chunk.file_name || 'Chunk')}</p>
-                            <p class="source-preview-meta">${escapeHtml(chunk.anchor_type || '')} ${chunk.anchor_page ? (`page ${chunk.anchor_page}`) : ''} ${chunk.anchor_row ? (`row ${chunk.anchor_row}`) : ''}</p>
+                            <p class="source-preview-meta">${escapeHtml(formatAnchorMeta(chunk.anchor_type, chunk.anchor_page, chunk.anchor_row))}</p>
                             <div class="source-preview-text">${escapeHtml(chunk.text || '')}</div>
                         </div>
                     `;
@@ -2381,7 +2548,7 @@
                             answer = payload.answer_markdown || answer;
                             assistantRow.dataset.answerRaw = answer || '';
                             latestCitations = Array.isArray(payload.citations) ? payload.citations : [];
-                            if (textEl) textEl.innerHTML = markdownToHtml(answer, responseId);
+                            if (textEl) textEl.innerHTML = markdownToHtml(answer, responseId, latestCitations);
                             renderCitations(latestCitations, responseId);
                         } else if (eventName === 'error') {
                             renderMarkdown(textEl, payload.error || 'Streaming error');
@@ -2629,6 +2796,11 @@
                     return false;
                 }
                 const status = await response.json();
+                const effectiveOcr = extractEffectiveOcrStats(status);
+                setOcrStats(effectiveOcr || readCachedOcrStats(activeUploadId));
+                if (effectiveOcr && activeUploadId) {
+                    cacheOcrStats(activeUploadId, effectiveOcr);
+                }
                 if (!status.has_indexed_content) {
                     alert('Files are missing or deleted. Please upload files again.');
                     return false;
@@ -2674,7 +2846,7 @@
                     assistantRow.dataset.answerRaw = msg.content || '';
                     assistantRow.dataset.baseMessage = lastUserMessage || '';
                     const bodyEl = assistantRow.querySelector('.assistant-message-text');
-                    if (bodyEl) bodyEl.innerHTML = markdownToHtml(msg.content || '', responseId);
+                    if (bodyEl) bodyEl.innerHTML = markdownToHtml(msg.content || '', responseId, Array.isArray(msg.citations) ? msg.citations : []);
                     const copyBtn = assistantRow.querySelector('.assistant-copy');
                     if (copyBtn) {
                         copyBtn.onclick = async () => {
@@ -2704,11 +2876,29 @@
             if (!activeUploadId) {
                 fileProcessItems = [];
                 isIndexing = false;
+                setOcrStats(null);
                 renderProcessedFiles();
                 return;
             }
             try {
-                const response = await fetch(`/uploads/${encodeURIComponent(activeUploadId)}/files`);
+                const filesUrl = `/uploads/${encodeURIComponent(activeUploadId)}/files`;
+                const statusUrl = `/uploads/${encodeURIComponent(activeUploadId)}/status`;
+                const [response, statusResponse] = await Promise.all([
+                    fetch(filesUrl),
+                    fetch(statusUrl),
+                ]);
+                if (statusResponse.ok) {
+                    const statusPayload = await statusResponse.json();
+                    const effectiveOcr = extractEffectiveOcrStats(statusPayload);
+                    if (effectiveOcr) {
+                        setOcrStats(effectiveOcr);
+                        cacheOcrStats(activeUploadId, effectiveOcr);
+                    } else {
+                        setOcrStats(readCachedOcrStats(activeUploadId));
+                    }
+                } else {
+                    setOcrStats(readCachedOcrStats(activeUploadId));
+                }
                 if (!response.ok) {
                     fileProcessItems = [];
                     isIndexing = false;
@@ -2738,6 +2928,7 @@
             } catch (_e) {
                 fileProcessItems = [];
                 isIndexing = false;
+                setOcrStats(null);
                 renderProcessedFiles();
             }
         }
@@ -2757,6 +2948,13 @@
                     throw new Error(`Failed status poll: ${response.status}`);
                 }
                 const status = await response.json();
+                const effectiveOcr = extractEffectiveOcrStats(status);
+                if (effectiveOcr) {
+                    setOcrStats(effectiveOcr);
+                    if (activeUploadId) cacheOcrStats(activeUploadId, effectiveOcr);
+                } else {
+                    setOcrStats(readCachedOcrStats(activeUploadId));
+                }
 
                 if (baseProcessedOffset === null) {
                     const total = Number(status.files_total) || 0;
@@ -2816,7 +3014,10 @@
                     break;
                 }
 
-                const statusKey = `${status.status}|${status.progress}|${status.files_processed}|${status.files_total}|${status.chunks_indexed}`;
+                const ocrKey = status.ocr
+                    ? `${Number(status.ocr.images_found) || 0}|${Number(status.ocr.image_pages_processed) || 0}|${Number(status.ocr.image_pages_added_to_rag) || 0}`
+                    : '';
+                const statusKey = `${status.status}|${status.progress}|${status.files_processed}|${status.files_total}|${status.chunks_indexed}|${ocrKey}`;
                 if (statusKey === lastStatusKey) {
                     stagnantPolls += 1;
                 } else {
@@ -2864,6 +3065,7 @@
             isIndexing = true;
             setIndexState('indexing');
             setIndexProgress(0, 'Indexing');
+            setOcrStats(null);
             const batchStart = fileProcessItems.length;
 
             files.forEach((file) =>

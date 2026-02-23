@@ -1,19 +1,192 @@
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from docx import Document as DocxDocument
 from pptx import Presentation
 from pypdf import PdfReader
 
+try:
+    import numpy as np
+except Exception:
+    np = None
+
+try:
+    import pymupdf
+except Exception:
+    try:
+        import fitz as pymupdf  # Backward-compatible PyMuPDF import.
+    except Exception:
+        pymupdf = None
+
+try:
+    from rapidocr import RapidOCR
+except Exception:
+    RapidOCR = None
+
 
 SUPPORTED_EXTS = {".pdf", ".docx", ".pptx", ".txt", ".md"}
+OCR_STAT_KEYS = (
+    "pdf_files_scanned",
+    "images_found",
+    "image_pages_found",
+    "image_pages_processed",
+    "image_pages_added_to_rag",
+    "image_pages_not_added_to_rag",
+)
 
 
 @dataclass
 class ParseResult:
     chunks: list[dict]
     warnings: list[str]
+    stats: dict[str, int] = field(default_factory=dict)
+
+
+_OCR_ENGINE: Any | None = None
+_OCR_ENGINE_INITIALIZED = False
+
+
+def _empty_ocr_stats() -> dict[str, int]:
+    return {key: 0 for key in OCR_STAT_KEYS}
+
+
+def _format_page_list(pages: list[int], limit: int = 12) -> str:
+    if not pages:
+        return "-"
+    unique = sorted(set(int(p) for p in pages if isinstance(p, int)))
+    if len(unique) <= limit:
+        return ", ".join(str(p) for p in unique)
+    head = ", ".join(str(p) for p in unique[:limit])
+    return f"{head} (+{len(unique) - limit} more)"
+
+
+def _get_ocr_engine() -> tuple[Any | None, str | None]:
+    global _OCR_ENGINE, _OCR_ENGINE_INITIALIZED
+    if _OCR_ENGINE_INITIALIZED:
+        if _OCR_ENGINE is None:
+            return None, "RapidOCR engine initialization failed"
+        return _OCR_ENGINE, None
+    _OCR_ENGINE_INITIALIZED = True
+    if RapidOCR is None:
+        return None, "rapidocr is not installed"
+    try:
+        _OCR_ENGINE = RapidOCR()
+        return _OCR_ENGINE, None
+    except Exception as exc:
+        _OCR_ENGINE = None
+        return None, f"RapidOCR init error: {exc}"
+
+
+def _collect_ocr_text(node: Any, parts: list[str]) -> None:
+    if node is None:
+        return
+    if isinstance(node, str):
+        text = node.strip()
+        if text:
+            parts.append(text)
+        return
+    for attr in ("txts", "texts", "text"):
+        if hasattr(node, attr):
+            try:
+                attr_value = getattr(node, attr)
+            except Exception:
+                attr_value = None
+            _collect_ocr_text(attr_value, parts)
+            if parts:
+                return
+    if isinstance(node, dict):
+        for key in ("text", "txt", "transcription"):
+            value = node.get(key)
+            if isinstance(value, str) and value.strip():
+                parts.append(value.strip())
+                return
+        for value in node.values():
+            _collect_ocr_text(value, parts)
+        return
+    if isinstance(node, (list, tuple)):
+        if len(node) >= 2 and isinstance(node[1], str) and not isinstance(node[0], str):
+            text = node[1].strip()
+            if text:
+                parts.append(text)
+            return
+        for item in node:
+            _collect_ocr_text(item, parts)
+
+
+def _extract_ocr_text(raw_output: Any) -> str:
+    payload = raw_output
+    if isinstance(raw_output, tuple) and raw_output:
+        payload = raw_output[0]
+    parts: list[str] = []
+    _collect_ocr_text(payload, parts)
+    return "\n".join(parts).strip()
+
+
+def _merge_extracted_and_ocr_text(extracted_text: str, ocr_text: str) -> tuple[str, bool]:
+    base = (extracted_text or "").strip()
+    ocr = (ocr_text or "").strip()
+    if not ocr:
+        return base, False
+    if not base:
+        return ocr, True
+
+    merged_lines = [ln.strip() for ln in base.splitlines() if ln.strip()]
+    seen = {
+        re.sub(r"\s+", " ", ln).strip().lower()
+        for ln in merged_lines
+        if ln.strip()
+    }
+    added = False
+    for ln in [x.strip() for x in ocr.splitlines() if x.strip()]:
+        sig = re.sub(r"\s+", " ", ln).strip().lower()
+        if not sig or sig in seen:
+            continue
+        merged_lines.append(ln)
+        seen.add(sig)
+        added = True
+
+    if not added:
+        return base, False
+    return "\n".join(merged_lines), True
+
+
+def _open_pdf_image_context(path: Path) -> tuple[Any | None, dict[int, int], str | None]:
+    if pymupdf is None:
+        return None, {}, "PyMuPDF is not installed"
+    try:
+        doc = pymupdf.open(str(path))
+    except Exception as exc:
+        return None, {}, f"PyMuPDF open failed: {exc}"
+    image_counts: dict[int, int] = {}
+    for idx in range(doc.page_count):
+        page_num = idx + 1
+        try:
+            page = doc.load_page(idx)
+            images = page.get_images(full=True) or []
+            if images:
+                image_counts[page_num] = len(images)
+        except Exception:
+            continue
+    return doc, image_counts, None
+
+
+def _ocr_pdf_page(doc: Any, page_index: int, render_zoom: float) -> str:
+    if np is None:
+        raise RuntimeError("numpy is not available for OCR image conversion")
+    ocr_engine, ocr_err = _get_ocr_engine()
+    if ocr_engine is None:
+        raise RuntimeError(ocr_err or "RapidOCR is unavailable")
+    page = doc.load_page(page_index)
+    zoom = max(1.0, float(render_zoom))
+    matrix = pymupdf.Matrix(zoom, zoom)
+    pix = page.get_pixmap(matrix=matrix, alpha=False)
+    image = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+    if image.ndim == 3 and image.shape[2] == 4:
+        image = image[:, :, :3]
+    result = ocr_engine(image)
+    return _extract_ocr_text(result)
 
 
 def token_count(text: str) -> int:
@@ -159,6 +332,8 @@ def parse_file(
     pdf_text_threshold: int = 40,
     ignore_front_matter: bool = True,
     front_matter_scan_pages: int = 24,
+    enable_pdf_ocr: bool = True,
+    pdf_ocr_render_zoom: float = 2.0,
 ) -> ParseResult:
     ext = path.suffix.lower()
     if ext == ".pdf":
@@ -167,6 +342,8 @@ def parse_file(
             pdf_text_threshold,
             ignore_front_matter=ignore_front_matter,
             front_matter_scan_pages=front_matter_scan_pages,
+            enable_ocr=enable_pdf_ocr,
+            ocr_render_zoom=pdf_ocr_render_zoom,
         )
     if ext == ".docx":
         return parse_docx(path)
@@ -184,73 +361,157 @@ def parse_pdf(
     threshold: int,
     ignore_front_matter: bool = True,
     front_matter_scan_pages: int = 24,
+    enable_ocr: bool = True,
+    ocr_render_zoom: float = 2.0,
 ) -> ParseResult:
     chunks: list[dict] = []
     warnings: list[str] = []
+    ocr_stats = _empty_ocr_stats()
+    ocr_stats["pdf_files_scanned"] = 1
     idx = 0
     skipped_toc_blocks = 0
     skipped_front_matter_blocks = 0
     skipped_front_matter_pages = 0
+    ocr_added_pages: list[int] = []
+    ocr_failed_pages: list[int] = []
+    ocr_no_text_pages: list[int] = []
+    low_text_skipped_pages: list[int] = []
+    page_counts_with_chunks: dict[int, int] = {}
+
     try:
         reader = PdfReader(str(path))
     except Exception as exc:
-        return ParseResult(chunks=[], warnings=[f"{path.name}: failed to open PDF ({exc})"])
+        return ParseResult(
+            chunks=[],
+            warnings=[f"{path.name}: failed to open PDF ({exc})"],
+            stats=ocr_stats,
+        )
 
-    page_texts: list[tuple[int, str]] = []
-    for page_num, page in enumerate(reader.pages, start=1):
-        try:
-            text = page.extract_text() or ""
-        except Exception as exc:
-            warnings.append(f"{path.name}: page {page_num} parse error ({exc})")
-            continue
-        text = text.strip()
-        if len(text) < threshold:
-            warnings.append(f"{path.name}: page {page_num} appears scanned/low-text; OCR may be needed")
-            continue
-        page_texts.append((page_num, text))
+    pdf_image_doc, image_counts, image_scan_warning = _open_pdf_image_context(path)
+    image_pages = {page for page, count in image_counts.items() if int(count or 0) > 0}
+    ocr_stats["image_pages_found"] = len(image_pages)
+    ocr_stats["images_found"] = sum(int(c or 0) for c in image_counts.values())
+    if image_scan_warning:
+        warnings.append(f"{path.name}: image scan unavailable ({image_scan_warning})")
 
+    ocr_unavailable_reason: str | None = None
+    if enable_ocr:
+        if pdf_image_doc is None:
+            ocr_unavailable_reason = "PyMuPDF context is unavailable"
+        elif np is None:
+            ocr_unavailable_reason = "numpy is unavailable"
+        else:
+            _ocr_engine, ocr_err = _get_ocr_engine()
+            if _ocr_engine is None:
+                ocr_unavailable_reason = ocr_err or "RapidOCR is unavailable"
+
+    if enable_ocr and image_pages and ocr_unavailable_reason:
+        warnings.append(f"{path.name}: OCR unavailable ({ocr_unavailable_reason})")
+
+    ocr_accept_threshold = max(20, int(threshold / 2))
     start_page = None
-    if ignore_front_matter:
-        start_page = _detect_main_content_start(page_texts, front_matter_scan_pages)
-
-    for page_num, text in page_texts:
-        if ignore_front_matter and _is_front_matter_page(
-            text,
-            page_num=page_num,
-            start_page=start_page,
-            scan_pages=front_matter_scan_pages,
-        ):
-            skipped_front_matter_pages += 1
-            continue
-        blocks = split_blocks(text)
-        for para_idx, block in enumerate(blocks, start=1):
-            if looks_like_toc_block(block):
-                skipped_toc_blocks += 1
+    page_texts: list[tuple[int, str]] = []
+    try:
+        for page_num, page in enumerate(reader.pages, start=1):
+            has_images = page_num in image_pages
+            try:
+                text = page.extract_text() or ""
+            except Exception as exc:
+                warnings.append(f"{path.name}: page {page_num} parse error ({exc})")
                 continue
-            if ignore_front_matter and _is_front_matter_block(
-                block,
+            text = text.strip()
+            ocr_text = ""
+            ocr_attempted = False
+            if (
+                enable_ocr
+                and has_images
+                and not ocr_unavailable_reason
+                and pdf_image_doc is not None
+            ):
+                ocr_attempted = True
+                ocr_stats["image_pages_processed"] += 1
+                try:
+                    ocr_text = _ocr_pdf_page(
+                        pdf_image_doc,
+                        page_index=page_num - 1,
+                        render_zoom=ocr_render_zoom,
+                    ).strip()
+                except Exception:
+                    ocr_failed_pages.append(page_num)
+                    ocr_text = ""
+
+            if len(text) < threshold:
+                if ocr_attempted:
+                    if len(ocr_text) >= ocr_accept_threshold:
+                        text = ocr_text
+                        ocr_added_pages.append(page_num)
+                    else:
+                        ocr_no_text_pages.append(page_num)
+                        continue
+                else:
+                    low_text_skipped_pages.append(page_num)
+                    continue
+            else:
+                if ocr_attempted and ocr_text:
+                    merged_text, added_from_ocr = _merge_extracted_and_ocr_text(text, ocr_text)
+                    text = merged_text
+                    if added_from_ocr:
+                        ocr_added_pages.append(page_num)
+            page_texts.append((page_num, text))
+
+        if ignore_front_matter:
+            start_page = _detect_main_content_start(page_texts, front_matter_scan_pages)
+
+        ocr_added_page_set = set(ocr_added_pages)
+        for page_num, text in page_texts:
+            is_image_source_page = page_num in ocr_added_page_set
+            if ignore_front_matter and _is_front_matter_page(
+                text,
                 page_num=page_num,
                 start_page=start_page,
                 scan_pages=front_matter_scan_pages,
             ):
-                skipped_front_matter_blocks += 1
+                skipped_front_matter_pages += 1
                 continue
-            chunks.append(
-                {
-                    "chunk_index": idx,
-                    "text": block,
-                    "token_count": token_count(block),
-                    "anchor_type": "pdf_page",
-                    "anchor_page": page_num,
-                    "anchor_section": None,
-                    "anchor_paragraph": para_idx,
-                    "anchor_row": None,
-                    "start_char": None,
-                    "end_char": None,
-                    "preview": preview_text(block),
-                }
-            )
-            idx += 1
+            blocks = split_blocks(text)
+            chunked_on_page = 0
+            for para_idx, block in enumerate(blocks, start=1):
+                if looks_like_toc_block(block):
+                    skipped_toc_blocks += 1
+                    continue
+                if ignore_front_matter and _is_front_matter_block(
+                    block,
+                    page_num=page_num,
+                    start_page=start_page,
+                    scan_pages=front_matter_scan_pages,
+                ):
+                    skipped_front_matter_blocks += 1
+                    continue
+                chunks.append(
+                    {
+                        "chunk_index": idx,
+                        "text": block,
+                        "token_count": token_count(block),
+                        "anchor_type": "image" if is_image_source_page else "pdf_page",
+                        "anchor_page": page_num,
+                        "anchor_section": "Image source" if is_image_source_page else None,
+                        "anchor_paragraph": para_idx,
+                        "anchor_row": None,
+                        "start_char": None,
+                        "end_char": None,
+                        "preview": preview_text(block),
+                    }
+                )
+                idx += 1
+                chunked_on_page += 1
+            if chunked_on_page:
+                page_counts_with_chunks[page_num] = chunked_on_page
+    finally:
+        if pdf_image_doc is not None:
+            try:
+                pdf_image_doc.close()
+            except Exception:
+                pass
 
     if skipped_toc_blocks:
         warnings.append(f"{path.name}: skipped {skipped_toc_blocks} TOC-like block(s)")
@@ -261,7 +522,43 @@ def parse_pdf(
     if ignore_front_matter and start_page is not None:
         warnings.append(f"{path.name}: detected main content start around page {start_page}")
 
-    return ParseResult(chunks=chunks, warnings=warnings)
+    if low_text_skipped_pages:
+        warnings.append(
+            f"{path.name}: skipped {len(low_text_skipped_pages)} low-text page(s)"
+            f" (pages: {_format_page_list(low_text_skipped_pages)})"
+        )
+    if ocr_added_pages:
+        warnings.append(
+            f"{path.name}: OCR extracted usable text from {len(set(ocr_added_pages))} page(s)"
+            f" (pages: {_format_page_list(ocr_added_pages)})"
+        )
+    if ocr_failed_pages:
+        warnings.append(
+            f"{path.name}: OCR failed on {len(set(ocr_failed_pages))} page(s)"
+            f" (pages: {_format_page_list(ocr_failed_pages)})"
+        )
+    if ocr_no_text_pages:
+        warnings.append(
+            f"{path.name}: OCR found no usable text on {len(set(ocr_no_text_pages))} page(s)"
+            f" (pages: {_format_page_list(ocr_no_text_pages)})"
+        )
+
+    added_image_pages = len(image_pages.intersection(page_counts_with_chunks.keys()))
+    not_added_image_pages = max(0, len(image_pages) - added_image_pages)
+    ocr_stats["image_pages_added_to_rag"] = added_image_pages
+    ocr_stats["image_pages_not_added_to_rag"] = not_added_image_pages
+
+    if image_pages:
+        warnings.append(
+            (
+                f"{path.name}: image/OCR summary -> images found: {ocr_stats['images_found']} | "
+                f"image pages: {ocr_stats['image_pages_found']} | OCR processed pages: {ocr_stats['image_pages_processed']} | "
+                f"image pages added to RAG: {ocr_stats['image_pages_added_to_rag']} | "
+                f"image pages not added: {ocr_stats['image_pages_not_added_to_rag']}"
+            )
+        )
+
+    return ParseResult(chunks=chunks, warnings=warnings, stats=ocr_stats)
 
 
 def parse_docx(path: Path) -> ParseResult:
@@ -414,4 +711,3 @@ def parse_txt(path: Path) -> ParseResult:
         )
 
     return ParseResult(chunks=chunks, warnings=[])
-

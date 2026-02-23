@@ -2386,6 +2386,8 @@ class ChatService:
             return "document summary"
         if chunk.get("anchor_type") == "pdf_page":
             return f"page {chunk.get('anchor_page')}, paragraph {chunk.get('anchor_paragraph')}"
+        if chunk.get("anchor_type") in {"image", "image_source", "pdf_image", "pdf_image_source"}:
+            return f"image source page {chunk.get('anchor_page')}, segment {chunk.get('anchor_paragraph')}"
         if chunk.get("anchor_type") == "ppt_slide":
             return f"slide {chunk.get('anchor_page')}, block {chunk.get('anchor_paragraph')}"
         if chunk.get("anchor_type") in {"md_heading", "docx_paragraph", "txt_block"}:

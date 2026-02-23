@@ -309,17 +309,20 @@ def get_index_status(job_id: str = Query(...)) -> IndexStatusResponse:
         warnings=job.warnings,
         errors=job.errors,
         detail=effective_detail,
+        ocr=job.ocr,
     )
 
 
 @app.get("/uploads/{upload_id}/status", response_model=UploadStatusResponse)
 def get_upload_status(upload_id: str) -> UploadStatusResponse:
     doc_count, chunk_count = _upload_counts(upload_id)
+    ocr_stats = db.get_upload_ocr_stats(upload_id)
     return UploadStatusResponse(
         upload_id=upload_id,
         has_indexed_content=chunk_count > 0,
         document_count=doc_count,
         chunk_count=chunk_count,
+        ocr=ocr_stats,
     )
 
 

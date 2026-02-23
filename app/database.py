@@ -500,6 +500,51 @@ class Database:
                 (f"%{upload_id}%",),
             ).fetchall()
 
+    def get_upload_ocr_stats(self, upload_id: str) -> dict[str, int]:
+        stats = {
+            "pdf_files_scanned": 0,
+            "images_found": 0,
+            "image_pages_found": 0,
+            "image_pages_processed": 0,
+            "image_pages_added_to_rag": 0,
+            "image_pages_not_added_to_rag": 0,
+        }
+        if not upload_id:
+            return stats
+        pattern = f"%{upload_id}%"
+        with self.connect() as conn:
+            row_pdf = conn.execute(
+                """
+                SELECT COUNT(*) AS c
+                FROM documents
+                WHERE file_path LIKE ?
+                  AND LOWER(file_ext) = 'pdf'
+                """,
+                (pattern,),
+            ).fetchone()
+            stats["pdf_files_scanned"] = int((row_pdf["c"] if row_pdf else 0) or 0)
+
+            row_added = conn.execute(
+                """
+                SELECT COUNT(DISTINCT c.document_id || ':' || COALESCE(c.anchor_page, -1)) AS c
+                FROM chunks c
+                JOIN documents d ON d.id = c.document_id
+                WHERE d.file_path LIKE ?
+                  AND c.anchor_type = 'image'
+                """,
+                (pattern,),
+            ).fetchone()
+            image_pages_added = int((row_added["c"] if row_added else 0) or 0)
+            stats["image_pages_added_to_rag"] = image_pages_added
+
+            # Persisted chunks currently retain only image-source pages that made it into RAG.
+            # Use these values as stable fallback stats when no active indexing job is being polled.
+            stats["images_found"] = image_pages_added
+            stats["image_pages_found"] = image_pages_added
+            stats["image_pages_processed"] = image_pages_added
+            stats["image_pages_not_added_to_rag"] = 0
+        return stats
+
     def search_chunks_in_upload_by_terms(self, upload_id: str, terms: list[str], limit: int = 24) -> list[sqlite3.Row]:
         if not upload_id or not terms:
             return []
