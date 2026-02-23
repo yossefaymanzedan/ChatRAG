@@ -8,7 +8,7 @@ Local-first RAG chat app for multi-document QA with grounded citations.
 
 If you don’t want to install Python or run commands, download the full app bundle here:
 
-- **Download:** https://drive.google.com/file/d/15EPHrKbuD8ckSqCnVGd3qzSxzMfbo4AH/view?usp=sharing
+- **Download:** https://drive.google.com/file/d/1IEKIRoyiK1EHiUvrkFyOZwrxA0PBRUyc/view?usp=sharing
 
 ### How to run
 1. Download the ZIP
@@ -36,10 +36,17 @@ If you see “Windows protected your PC”, click **More info**. **Run anyway**.
 - Four modes: `general`, `fast`, `moderate`, `accurate`
 - Provider runtime: `ollama` (default), `openai`, `deepseek`
 - Token and indexing observability via `.rag/token_logs.txt` and `.rag/log.txt`
+- OCR for scanned/image-based PDFs using PyMuPDF + RapidOCR, including OCR coverage stats
+
+## OCR (PDF)
+- PDF parsing combines native text extraction (`pypdf`) with OCR on image-heavy pages (`PyMuPDF` + `rapidocr`)
+- OCR runs when `PDF_OCR_ENABLED=true` and can recover text from scanned/image-based PDF pages
+- OCR summary stats are available during/after indexing (image pages found, processed, added to RAG, not added)
 
 ## Limitations and Not Supported
 - No support for `.csv`, `.xlsx`, or `.xls` indexing.
-- No OCR pipeline is included. Image-only/scanned PDFs and images with text may not be searchable.
+- OCR support is PDF-focused; standalone image files (e.g., `.png`, `.jpg`) are not indexed as source documents.
+- OCR quality depends on scan quality and language/font clarity; some pages may still return weak or no text.
 - Table-heavy documents are only partially reliable:
   - `.docx` tables are parsed, but complex merged/nested layouts can still lose structure.
   - PDF table extraction depends on PDF text layout and can be incomplete or out of order.
@@ -119,6 +126,8 @@ python app/main.py
 - `POST /index/upload`
 - `POST /index/upload/start`
 - `GET /index/status?job_id=...`
+- `GET /uploads/{upload_id}/status`
+- `GET /uploads/{upload_id}/files`
 
 ### Chat
 - `POST /chat`
@@ -133,6 +142,7 @@ Main settings are in `app/config.py`:
 - Provider: `LLM_PROVIDER`, `OLLAMA_*`, `OPENAI_*`, `DEEPSEEK_*`
 - Retrieval thresholds: `LOW_CONFIDENCE_THRESHOLD`, `HARD_NOT_FOUND_THRESHOLD`
 - Embedding/storage: `EMBEDDING_*`, `CHROMA_*`, `SQLITE_PATH`
+- PDF/OCR parsing: `PDF_TEXT_THRESHOLD`, `PDF_OCR_ENABLED`, `PDF_OCR_RENDER_ZOOM`, `IGNORE_FRONT_MATTER`, `FRONT_MATTER_SCAN_PAGES`
 - Metadata/chat store: `app/database.py` (SQLite)
 
 ## Docs
